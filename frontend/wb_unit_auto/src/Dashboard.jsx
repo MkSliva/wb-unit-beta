@@ -131,7 +131,11 @@ export default function Dashboard() {
             <p><strong>Средняя себестоимость:</strong> {avgCost} ₽</p>
 
             {chartData.length > 0 && (
+
               <div className="my-4 flex justify-center">
+
+
+
                 <LineChart width={700} height={300} data={chartData}>
                   <CartesianGrid stroke="#ccc" />
                   <XAxis dataKey="date" />
@@ -145,6 +149,7 @@ export default function Dashboard() {
               </div>
             )}
 
+
             <h4 className="text-lg font-semibold mt-4">📦 Все товары в связке:</h4>
             <table className="table-auto w-full text-center">
               <thead className="bg-gray-100">
@@ -155,6 +160,7 @@ export default function Dashboard() {
                   <th className="p-2">Прибыль</th>
                   <th className="p-2">Цена продажи</th>
                   <th className="p-2">Себестоимость</th>
+
                 </tr>
               </thead>
               <tbody>
@@ -177,7 +183,9 @@ export default function Dashboard() {
                 setChartData([]);
                 setGroupDetails([]);
               }}
+
               className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+
             >
               Закрыть
             </button>
