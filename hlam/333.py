@@ -2,7 +2,12 @@ import os
 import httpx
 import asyncio
 import requests
-import sqlite3
+import psycopg2
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -96,7 +101,7 @@ def get_sales_data(nm_ids: list, token: str):
 
 # === 3. Сохранение в БД ===
 def save_sales_to_db(sales_data: list, cards_info: dict):
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # 🛠️ Создаём таблицу, если она отсутствует
@@ -116,11 +121,13 @@ def save_sales_to_db(sales_data: list, cards_info: dict):
                        )
                    """)
 
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
-    cursor.execute("PRAGMA table_info(sales)")
-    existing_columns = [row[1] for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name='sales'"
+    )
+    existing_columns = [row[0] for row in cursor.fetchall()]
     required_columns = {
         "realsales": "INTEGER DEFAULT 0",
         "quantity": "INTEGER DEFAULT 0",
@@ -165,7 +172,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict):
                     opens, atc, buyouts,
                     buyout_percent, add_to_cart_conv, cart_to_order_conv
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT(date, nm_id) DO UPDATE SET
                     vendor_code=excluded.vendor_code,
                     imt_id=excluded.imt_id,

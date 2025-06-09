@@ -1,5 +1,11 @@
 import pandas as pd
-import sqlite3
+import psycopg2
+import os
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # Загружаем Excel-файл
 df_excel = pd.read_excel("Аналитика К июнь с группировкой.xlsx")
@@ -26,7 +32,7 @@ df_filtered = df_excel[[
 ]].dropna(subset=["vendorCode"])
 
 # Подключение к базе данных
-conn = sqlite3.connect("../backend/wildberries_cards.db")
+conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 
 # Добавляем новые колонки в таблицу, если их нет
@@ -46,43 +52,46 @@ new_columns = {
 for column, col_type in new_columns.items():
     try:
         cursor.execute(f"ALTER TABLE cards ADD COLUMN {column} {col_type}")
-    except sqlite3.OperationalError:
+    except Exception:
         pass  # колонка уже существует
 
 # Обновляем строки по vendorCode
 for _, row in df_filtered.iterrows():
-    cursor.execute("""
+    cursor.execute(
+        """
         UPDATE cards SET
-            purchase_price = ?,
-            delivery_to_warehouse = ?,
-            wb_commission_rub = ?,
-            wb_logistics = ?,
-            tax_rub = ?,
-            packaging = ?,
-            fuel = ?,
-            gift = ?,
-            defect_percent = ?,
-            cost_price = ?
-        WHERE vendorCode = ?
-    """, (
-        row["purchase_price"],
-        row["delivery_to_warehouse"],
-        row["wb_commission_rub"],
-        row["wb_logistics"],
-        row["tax_rub"],
-        row["packaging"],
-        row["fuel"],
-        row["gift"],
-        row["defect_percent"],
-        row["cost_price"],
-        str(row["vendorCode"])
-    ))
+            purchase_price = %s,
+            delivery_to_warehouse = %s,
+            wb_commission_rub = %s,
+            wb_logistics = %s,
+            tax_rub = %s,
+            packaging = %s,
+            fuel = %s,
+            gift = %s,
+            defect_percent = %s,
+            cost_price = %s
+        WHERE vendorCode = %s
+        """,
+        (
+            row["purchase_price"],
+            row["delivery_to_warehouse"],
+            row["wb_commission_rub"],
+            row["wb_logistics"],
+            row["tax_rub"],
+            row["packaging"],
+            row["fuel"],
+            row["gift"],
+            row["defect_percent"],
+            row["cost_price"],
+            str(row["vendorCode"]),
+        ),
+    )
 
 conn.commit()
 # Добавляем колонку для прибыли, если её ещё нет
 try:
     cursor.execute("ALTER TABLE cards ADD COLUMN profit_per_item REAL")
-except sqlite3.OperationalError:
+except Exception:
     pass  # колонка уже существует
 
 # Обновляем значения прибыли (profit_per_item = salePrice - cost_price)
@@ -126,7 +135,7 @@ def import_excel_if_missing(db_path="wildberries_cards.db", excel_path="Анал
     ]].dropna(subset=["vendorCode"])
 
     # Подключение к базе данных
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Добавляем новые колонки в таблицу, если их нет
@@ -146,43 +155,46 @@ def import_excel_if_missing(db_path="wildberries_cards.db", excel_path="Анал
     for column, col_type in new_columns.items():
         try:
             cursor.execute(f"ALTER TABLE cards ADD COLUMN {column} {col_type}")
-        except sqlite3.OperationalError:
+        except Exception:
             pass  # колонка уже существует
 
     # Обновляем строки по vendorCode
     for _, row in df_filtered.iterrows():
-        cursor.execute("""
-                       UPDATE cards
-                       SET purchase_price        = ?,
-                           delivery_to_warehouse = ?,
-                           wb_commission_rub     = ?,
-                           wb_logistics          = ?,
-                           tax_rub               = ?,
-                           packaging             = ?,
-                           fuel                  = ?,
-                           gift                  = ?,
-                           defect_percent        = ?,
-                           cost_price            = ?
-                       WHERE vendorCode = ?
-                       """, (
-                           row["purchase_price"],
-                           row["delivery_to_warehouse"],
-                           row["wb_commission_rub"],
-                           row["wb_logistics"],
-                           row["tax_rub"],
-                           row["packaging"],
-                           row["fuel"],
-                           row["gift"],
-                           row["defect_percent"],
-                           row["cost_price"],
-                           str(row["vendorCode"])
-                       ))
+        cursor.execute(
+            """
+            UPDATE cards
+            SET purchase_price        = %s,
+                delivery_to_warehouse = %s,
+                wb_commission_rub     = %s,
+                wb_logistics          = %s,
+                tax_rub               = %s,
+                packaging             = %s,
+                fuel                  = %s,
+                gift                  = %s,
+                defect_percent        = %s,
+                cost_price            = %s
+            WHERE vendorCode = %s
+            """,
+            (
+                row["purchase_price"],
+                row["delivery_to_warehouse"],
+                row["wb_commission_rub"],
+                row["wb_logistics"],
+                row["tax_rub"],
+                row["packaging"],
+                row["fuel"],
+                row["gift"],
+                row["defect_percent"],
+                row["cost_price"],
+                str(row["vendorCode"]),
+            ),
+        )
 
     conn.commit()
     # Добавляем колонку для прибыли, если её ещё нет
     try:
         cursor.execute("ALTER TABLE cards ADD COLUMN profit_per_item REAL")
-    except sqlite3.OperationalError:
+    except Exception:
         pass  # колонка уже существует
 
     # Обновляем значения прибыли (profit_per_item = salePrice - cost_price)

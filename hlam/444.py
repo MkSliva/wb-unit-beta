@@ -2,7 +2,12 @@ import os
 import httpx
 import asyncio
 import requests
-import sqlite3
+import psycopg2
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -97,7 +102,7 @@ def get_sales_data(nm_ids: list, token: str):
 
 # === 3. Сохранение в БД с агрегацией ===
 def save_sales_to_db(sales_data: list, cards_info: dict):
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Создание таблицы
@@ -173,7 +178,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict):
                 realsales, quantity, revenue, returns,
                 opens, atc, buyouts,
                 buyout_percent, add_to_cart_conv, cart_to_order_conv
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(date, nm_id) DO UPDATE SET
                 vendor_code=excluded.vendor_code,
                 imt_id=excluded.imt_id,

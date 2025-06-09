@@ -1,4 +1,10 @@
-import sqlite3
+import psycopg2
+import os
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 import requests
 import json
 from datetime import datetime, timedelta
@@ -72,8 +78,7 @@ def fetch_advertising_data(api_key, campaign_ids, date):
 db_path = "/backend/wildberries_cards.db"
 
 def update_sales_table(ad_data, db_path):
-    db_path = "/backend/wildberries_cards.db"
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
     print(ad_data)
     for entry in ad_data:
@@ -95,7 +100,7 @@ def update_sales_table(ad_data, db_path):
                                           adv_views,
                                           profit,
                                           total_cost)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        """, (
                            entry["date"],  # 📅 Дата
                            entry.get("name"),

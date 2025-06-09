@@ -1,12 +1,16 @@
 import requests
-import sqlite3
 import time
 from dotenv import load_dotenv
 import os
+import psycopg2
 
 # === Конфигурация ===
 load_dotenv("api.env")
 WB_API_KEY = os.getenv("WB_API_KEY")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 TAX_PERCENT = 12  # Процент налога
 DEFECT_PERCENT = 2  # Процент брака
 SALARY_PER_ITEM = 100  # Зарплата на единицу товара
@@ -99,7 +103,7 @@ def get_all_discounted_prices(api_key: str) -> dict:
 
 # === Обновление таблицы cards в БД с расчётом прибыли ===
 def update_cards_with_profit():
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Получаем карточки и цены
@@ -117,11 +121,14 @@ def update_cards_with_profit():
         print(f"{vendor_code} — цена со скидкой: {sale_price}")
 
         # Получаем себестоимость и расходы из таблицы
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT purchase_price, delivery_to_warehouse, commission_percent, wb_logistics,
                    packaging, fuel, gift
-            FROM cards WHERE vendorCode = ?
-        """, (vendor_code,))
+            FROM cards WHERE vendorCode = %s
+        """,
+            (vendor_code,),
+        )
         row = cursor.fetchone()
         if not row:
             print(f"⚠️ Пропущено (нет данных в БД): {vendor_code}")
@@ -157,11 +164,14 @@ def update_cards_with_profit():
 
 
         # Обновляем таблицу
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE cards
-            SET salePrice = ?, tax_rub = ?, wb_commission_rub = ?, cost_price = ?, profit_per_item = ?
-            WHERE vendorCode = ?
-        """, (sale_price, tax_rub, wb_commission_rub, cost_price, profit, vendor_code))
+            SET salePrice = %s, tax_rub = %s, wb_commission_rub = %s, cost_price = %s, profit_per_item = %s
+            WHERE vendorCode = %s
+        """,
+            (sale_price, tax_rub, wb_commission_rub, cost_price, profit, vendor_code),
+        )
 
     conn.commit()
     conn.close()
@@ -185,7 +195,7 @@ def get_commission_rates_and_update_cards(WB_API_KEY: str, db_path: str = "wildb
         return
 
     # Открываем соединение с БД
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     updated = 0
@@ -195,11 +205,14 @@ def get_commission_rates_and_update_cards(WB_API_KEY: str, db_path: str = "wildb
         print("Комиссия для товара", subject_name, kgvp_supplier)
 
         if subject_name and kgvp_supplier is not None:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE cards
-                SET commission_percent = ?
-                WHERE subjectName = ?
-            """, (kgvp_supplier, subject_name))
+                SET commission_percent = %s
+                WHERE subjectName = %s
+                """,
+                (kgvp_supplier, subject_name),
+            )
             updated += cursor.rowcount
 
     conn.commit()
@@ -207,7 +220,6 @@ def get_commission_rates_and_update_cards(WB_API_KEY: str, db_path: str = "wildb
 
     print(f"✅ Обновлено строк в таблице cards: {updated}")
 
-import sqlite3
 
 def find_incomplete_cards(db_path="wildberries_cards.db"):
     # Критически важные поля для расчёта прибыли
@@ -217,7 +229,7 @@ def find_incomplete_cards(db_path="wildberries_cards.db"):
         "defect_percent", "commission_percent"
     ]
 
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     conditions = [f"({field} IS NULL OR {field} = '')" for field in required_fields]

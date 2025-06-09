@@ -2,7 +2,12 @@ import os
 import httpx
 import asyncio
 import requests
-import sqlite3
+import psycopg2
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -152,7 +157,7 @@ def get_ad_metrics():
 
 # === 4. Сохранение в БД ===
 def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -229,7 +234,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
                 buyout_percent, add_to_cart_conv, cart_to_order_conv,
                 ad_views, ad_clicks, ad_ctr, ad_cpc, ad_spend,
                 ad_atbs, ad_orders, ad_cr, ad_shks, ad_sum_price
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(date, nm_id) DO UPDATE SET
                 vendor_code=excluded.vendor_code,
                 imt_id=excluded.imt_id,

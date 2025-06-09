@@ -4,7 +4,7 @@ from statistics import quantiles
 import httpx
 import asyncio
 import requests
-import sqlite3
+import psycopg2
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -14,6 +14,10 @@ import pandas as pd
 # 🔐 Загрузка токена
 load_dotenv("api.env")
 WB_API_KEY = os.getenv("WB_API_KEY")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # 🕛 Даты для выборки
 yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
@@ -162,7 +166,7 @@ def get_ad_metrics():
 
 # === 4. Сохранение в БД ===
 def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
     # Создание таблицы, если не существует
     cursor.execute("""
@@ -208,7 +212,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
     """)
 
 
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # 📦 Получение справочной информации из таблицы cards
@@ -256,7 +260,10 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
 
 
 
-            cursor.execute("SELECT COUNT(*) FROM sales WHERE nm_ID = ? AND date = ?", (nmID, date))
+            cursor.execute(
+                "SELECT COUNT(*) FROM sales WHERE nm_ID = %s AND date = %s",
+                (nmID, date),
+            )
             exists = cursor.fetchone()[0] > 0
 
             merged = {
@@ -271,14 +278,20 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
             }
             ensure_columns_exist(conn, "sales", merged)
             if exists:
-                placeholders = ", ".join([f"{k} = ?" for k in merged])
+                placeholders = ", ".join([f"{k} = %s" for k in merged])
                 values = list(merged.values()) + [nmID, date]
-                cursor.execute(f"UPDATE sales SET {placeholders} WHERE nm_ID = ? AND date = ?", values)
+                cursor.execute(
+                    f"UPDATE sales SET {placeholders} WHERE nm_ID = %s AND date = %s",
+                    values,
+                )
             else:
                 columns = ["nm_ID", "date"] + list(merged.keys())
                 values = [nmID, date] + list(merged.values())
-                placeholders = ", ".join(["?"] * len(columns))
-                cursor.execute(f"INSERT INTO sales ({', '.join(columns)}) VALUES ({placeholders})", values)
+                placeholders = ", ".join(["%s"] * len(columns))
+                cursor.execute(
+                    f"INSERT INTO sales ({', '.join(columns)}) VALUES ({placeholders})",
+                    values,
+                )
 
     conn.commit()
     conn.close()
@@ -306,12 +319,15 @@ async def main():
 
 
 def calculate_total_profit_for_day():
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Получаем все строки за вчерашний день
     yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
-    cursor.execute("SELECT total_profit FROM sales WHERE date = ?", (yesterday,))
+    cursor.execute(
+        "SELECT total_profit FROM sales WHERE date = %s",
+        (yesterday,),
+    )
     rows = cursor.fetchall()
 
     # Суммируем profit
@@ -324,13 +340,13 @@ def calculate_total_profit_for_day():
 
 def export_sales_to_excel():
     # Подключение к БД
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
 
     # Получаем дату вчерашнего дня
     yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
 
     # Запрос всех строк за вчера
-    query = "SELECT * FROM sales WHERE date = ?"
+    query = "SELECT * FROM sales WHERE date = %s"
     df = pd.read_sql_query(query, conn, params=(yesterday,))
 
     # Сохраняем в Excel
@@ -344,8 +360,11 @@ def ensure_columns_exist(conn, table_name, data_dict):
     cursor = conn.cursor()
 
     # Получаем список уже существующих столбцов
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    existing_columns = [row[1] for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name=%s",
+        (table_name,),
+    )
+    existing_columns = [row[0] for row in cursor.fetchall()]
 
     # Проверяем, каких не хватает
     for key in data_dict.keys():
@@ -364,7 +383,7 @@ def safe_int(val):
 
 
 def calculate_bundle_profits():
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Получаем все нужные данные
@@ -406,17 +425,20 @@ def calculate_profit_by_bundles():
     yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
 
     # Подключение к базе
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     # Получаем все данные по вчерашнему дню
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT imtID, imtName, vendorCode, cost_price, total_profit, ordersCount
-        FROM sales 
-        WHERE imtID IS NOT NULL 
-          AND total_profit IS NOT NULL 
-          AND date = ?
-    """, (yesterday,))
+        FROM sales
+        WHERE imtID IS NOT NULL
+          AND total_profit IS NOT NULL
+          AND date = %s
+        """,
+        (yesterday,),
+    )
     rows = cursor.fetchall()
 
     # Группировка по связкам

@@ -1,9 +1,15 @@
 import os
 import httpx
-import sqlite3
+import psycopg2
 import asyncio
 import time
 from dotenv import load_dotenv
+import os
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # 📌 Загружаем API-ключ из файла .env
 load_dotenv("../backend/api.env")
@@ -15,7 +21,7 @@ LIMIT = 1000
 # 🔄 Основная асинхронная функция обновления цен
 async def update_prices_get_method():
     # Подключение к базе данных
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     offset = 0
@@ -55,8 +61,8 @@ async def update_prices_get_method():
 
                     cursor.execute("""
                         UPDATE cards
-                        SET price = ?, salePrice = ?
-                        WHERE nmID = ?
+                        SET price = %s, salePrice = %s
+                        WHERE nmID = %s
                     """, (price, sale_price, nm_id))
 
                 conn.commit()

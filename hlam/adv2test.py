@@ -2,7 +2,13 @@ import requests
 from datetime import datetime, timedelta
 import json
 from collections import defaultdict
-import sqlite3
+import psycopg2
+import os
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 API_KEY = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwNTIwdjEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc2NDkyOTQ5MSwiaWQiOiIwMTk3NDIyNi0zY2VmLTdlMDctODgzNS1iMDlmNzdjMmJmZWMiLCJpaWQiOjIwMDEwODE3LCJvaWQiOjEzODY0NjcsInMiOjEwNzM3NTc5NTAsInNpZCI6IjE5MzhhN2NmLWE5YjMtNDhmOC1hYjUyLWVmMGMzMjU2OWJhYiIsInQiOmZhbHNlLCJ1aWQiOjIwMDEwODE3fQ._hZYYZ6vb3jDb_oAUMSs3nfy7CvgsMNUXy62eai2VSiwj1Q0zcdGoEVJK_nbNMsPAVpu8poWMKcyV8RP0V3x4Q"
   # 🔐 Твой ключ
@@ -81,7 +87,7 @@ for campaign in data:
                 group["date"] = date_str
 
 # 📥 Подключение к базе данных
-conn = sqlite3.connect("../backend/wildberries_cards.db")
+conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 
 # 🛠 Создание таблицы, если её нет
@@ -117,7 +123,7 @@ for nm_id, d in sorted(aggregated.items()):
 
     cursor.execute("""
     INSERT INTO sales (date, campaign_id, nm_id, name, views, clicks, ctr, cpc, sum, atbs, orders, cr, shks, sum_price)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT(date, nm_id) DO UPDATE SET
         campaign_id=excluded.campaign_id,
         name=excluded.name,

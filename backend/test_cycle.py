@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-import sqlite3
+import psycopg2
 import asyncio
 import requests
 import httpx
@@ -11,6 +11,10 @@ from collections import defaultdict
 
 load_dotenv("api.env")
 WB_API_KEY = os.getenv("WB_API_KEY")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # === Safe int ===
 def safe_int(val):
@@ -19,8 +23,11 @@ def safe_int(val):
 # === Добавление недостающих столбцов ===
 def ensure_columns_exist(conn, table_name, data_dict):
     cursor = conn.cursor()
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    existing_columns = [row[1] for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name=%s",
+        (table_name,),
+    )
+    existing_columns = [row[0] for row in cursor.fetchall()]
     for key in data_dict.keys():
         if key not in existing_columns:
             print(f"🛠 Добавляем столбец: {key}")
@@ -120,7 +127,7 @@ def get_ad_metrics(date: str):
 
 # === Сохранение в БД ===
 def save_sales_to_db_for_date(sales_data, cards_info, ad_data, date):
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
@@ -155,17 +162,26 @@ def save_sales_to_db_for_date(sales_data, cards_info, ad_data, date):
                 "imtName": imtName
             }
             ensure_columns_exist(conn, "sales", merged)
-            cursor.execute("SELECT COUNT(*) FROM sales WHERE nm_ID = ? AND date = ?", (nmID, record_date))
+            cursor.execute(
+                "SELECT COUNT(*) FROM sales WHERE nm_ID = %s AND date = %s",
+                (nmID, record_date),
+            )
             exists = cursor.fetchone()[0] > 0
             if exists:
-                placeholders = ", ".join([f"{k} = ?" for k in merged])
+                placeholders = ", ".join([f"{k} = %s" for k in merged])
                 values = list(merged.values()) + [nmID, record_date]
-                cursor.execute(f"UPDATE sales SET {placeholders} WHERE nm_ID = ? AND date = ?", values)
+                cursor.execute(
+                    f"UPDATE sales SET {placeholders} WHERE nm_ID = %s AND date = %s",
+                    values,
+                )
             else:
                 columns = ["nm_ID", "date"] + list(merged.keys())
                 values = [nmID, record_date] + list(merged.values())
-                placeholders = ", ".join(["?"] * len(columns))
-                cursor.execute(f"INSERT INTO sales ({', '.join(columns)}) VALUES ({placeholders})", values)
+                placeholders = ", ".join(["%s"] * len(columns))
+                cursor.execute(
+                    f"INSERT INTO sales ({', '.join(columns)}) VALUES ({placeholders})",
+                    values,
+                )
     conn.commit()
     conn.close()
 

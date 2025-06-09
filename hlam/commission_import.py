@@ -1,10 +1,14 @@
-import sqlite3  # Работа с SQLite
 import requests  # HTTP-запросы к API
 import os  # Работа с переменными окружения
 from dotenv import load_dotenv  # Загрузка .env файла
+import psycopg2
 
 # Загружаем переменные окружения из файла api.env
 load_dotenv("../backend/api.env")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # Получаем API-ключ Wildberries из переменной окружения
 WB_API_KEY = os.getenv("WB_API_KEY")
@@ -65,18 +69,21 @@ def update_commissions_in_db(commissions_dict):
     print("📝 Обновляем комиссии в базе данных...")
 
     # Подключаемся к базе
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     updated = 0
 
     for subject_name, commission in commissions_dict.items():
         # Обновляем все карточки с нужной категорией
-        cursor.execute("""
-                       UPDATE cards
-                       SET commission_percent = ?
-                       WHERE subjectName = ?
-                       """, (commission, subject_name))
+        cursor.execute(
+            """
+            UPDATE cards
+            SET commission_percent = %s
+            WHERE subjectName = %s
+            """,
+            (commission, subject_name),
+        )
         updated += cursor.rowcount
 
     conn.commit()
