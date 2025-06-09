@@ -26,7 +26,7 @@ df_filtered = df_excel[[
 ]].dropna(subset=["vendorCode"])
 
 # Подключение к базе данных
-conn = sqlite3.connect("../backend/wildberries_cards.db")
+conn = sqlite3.connect("wildberries_cards.db")
 cursor = conn.cursor()
 
 # Добавляем новые колонки в таблицу, если их нет
@@ -126,7 +126,7 @@ def import_excel_if_missing(db_path="wildberries_cards.db", excel_path="Анал
     ]].dropna(subset=["vendorCode"])
 
     # Подключение к базе данных
-    conn = sqlite3.connect("../backend/wildberries_cards.db")
+    conn = sqlite3.connect("wildberries_cards.db")
     cursor = conn.cursor()
 
     # Добавляем новые колонки в таблицу, если их нет

@@ -259,11 +259,75 @@ def find_incomplete_cards(db_path="wildberries_cards.db"):
     else:
         print("✅ Все товары имеют необходимые параметры.")
 
+def ensure_cards_table_exists(db_path="wildberries_cards.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Создание таблицы, если не существует
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nmID INTEGER,
+        imtID TEXT,
+        vendorCode TEXT UNIQUE,
+        subjectName TEXT,
+        purchase_price REAL,
+        delivery_to_warehouse REAL,
+        commission_percent REAL,
+        wb_logistics REAL,
+        packaging REAL,
+        fuel REAL,
+        gift REAL,
+        defect_percent REAL,
+        salePrice REAL,
+        tax_rub REAL,
+        wb_commission_rub REAL,
+        cost_price REAL,
+        profit_per_item REAL
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+def insert_new_vendor_codes(db_path="wildberries_cards.db"):
+    # Получаем все карточки с Wildberries
+    cards = fetch_all_cards()
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    inserted_count = 0
+
+    for nm_id, info in cards.items():
+        vendor_code = info.get("vendorCode")
+        if not vendor_code:
+            continue
+
+        # Проверка — есть ли уже такой vendorCode в таблице
+        cursor.execute("SELECT 1 FROM cards WHERE vendorCode = ?", (vendor_code,))
+        exists = cursor.fetchone()
+        if exists:
+            continue
+
+        # Вставка новой карточки
+        cursor.execute("""
+            INSERT INTO cards (vendorCode, nmID)
+            VALUES (?, ?)
+        """, (vendor_code, nm_id))
+        inserted_count += 1
+
+    conn.commit()
+    conn.close()
+
+    print(f"🆕 Добавлено новых карточек: {inserted_count}")
+
 
 # === Точка входа ===
 if __name__ == "__main__":
-    #get_commission_rates_and_update_cards(WB_API_KEY)
-    #update_cards_with_profit()
+    ensure_cards_table_exists()
+    insert_new_vendor_codes()
+    get_commission_rates_and_update_cards(WB_API_KEY)
+    update_cards_with_profit()
     find_incomplete_cards()
 
 

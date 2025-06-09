@@ -5,7 +5,7 @@ from hlam.db import init_db, save_cards_to_db
 import asyncio
 from hlam.update_prices import update_prices_get_method
 from hlam.commission_import import fetch_commissions, update_commissions_in_db
-from hlam.importexcel import import_excel_if_missing
+from backend.importexcel import import_excel_if_missing
 
 # Загружаем токен
 load_dotenv("api.env")

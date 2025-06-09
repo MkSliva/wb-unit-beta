@@ -16,10 +16,10 @@ load_dotenv("api.env")
 WB_API_KEY = os.getenv("WB_API_KEY")
 
 # 🕛 Даты для выборки
-yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
 
 
-
+glebas = 6  # выбираем сколько дней назад брать данные
+yesterday = (datetime.utcnow() - timedelta(days=glebas)).date().isoformat()
 
 
 # === 1. Получение карточек с Content API ===
@@ -138,7 +138,6 @@ def get_ad_metrics():
             for app in day.get("apps", []):
 
                 for item in app.get("nm", []):
-
                     nmID = item.get("nmId")
                     group = aggregated[nmID]
                     group["ad_views"] += safe_int(item.get("views"))
@@ -166,53 +165,91 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
     cursor = conn.cursor()
     # Создание таблицы, если не существует
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sales (
-            nm_ID INTEGER,
-            date TEXT,
-            imtName TEXT,
-            total_profit REAL,
-            ordersCount INTEGER,
-            brand TEXT,
-            subjectName TEXT,
-            salePrice REAL,
-            purchase_price REAL,
-            delivery_to_warehouse REAL,
-            wb_commission_rub REAL,
-            wb_logistics REAL,
-            tax_rub REAL,
-            packaging REAL,
-            fuel REAL,
-            gift REAL,
-            defect_percent REAL,
-            cost_price REAL,
-            profit_per_item REAL,
-            commission_percent REAL,
-            ad_views INTEGER,
-            ad_clicks INTEGER,
-            ad_ctr REAL,
-            ad_cpc REAL,
-            ad_spend REAL,
-            ad_atbs INTEGER,
-            ad_orders INTEGER,
-            ad_cr REAL,
-            ad_shks INTEGER,
-            ad_sum_price REAL,
-            quantity INTEGER,
-            vendorCode TEXT,
-            imtID INTEGER,
-            openCardCount INTEGER,
-            addToCartCount INTEGER,
-            ordersSumRub INTEGER,
-            buyoutsCount INTEGER
-        )
-    """)
-
+                   CREATE TABLE IF NOT EXISTS sales
+                   (
+                       nm_ID
+                       INTEGER,
+                       date
+                       TEXT,
+                       imtName
+                       TEXT,
+                       total_profit
+                       REAL,
+                       ordersCount
+                       INTEGER,
+                       brand
+                       TEXT,
+                       subjectName
+                       TEXT,
+                       salePrice
+                       REAL,
+                       purchase_price
+                       REAL,
+                       delivery_to_warehouse
+                       REAL,
+                       wb_commission_rub
+                       REAL,
+                       wb_logistics
+                       REAL,
+                       tax_rub
+                       REAL,
+                       packaging
+                       REAL,
+                       fuel
+                       REAL,
+                       gift
+                       REAL,
+                       defect_percent
+                       REAL,
+                       cost_price
+                       REAL,
+                       profit_per_item
+                       REAL,
+                       commission_percent
+                       REAL,
+                       ad_views
+                       INTEGER,
+                       ad_clicks
+                       INTEGER,
+                       ad_ctr
+                       REAL,
+                       ad_cpc
+                       REAL,
+                       ad_spend
+                       REAL,
+                       ad_atbs
+                       INTEGER,
+                       ad_orders
+                       INTEGER,
+                       ad_cr
+                       REAL,
+                       ad_shks
+                       INTEGER,
+                       ad_sum_price
+                       REAL,
+                       quantity
+                       INTEGER,
+                       vendorCode
+                       TEXT,
+                       imtID
+                       INTEGER,
+                       openCardCount
+                       INTEGER,
+                       addToCartCount
+                       INTEGER,
+                       ordersSumRub
+                       INTEGER,
+                       buyoutsCount
+                       INTEGER
+                   )
+                   """)
 
     conn = sqlite3.connect("wildberries_cards.db")
     cursor = conn.cursor()
 
     # 📦 Получение справочной информации из таблицы cards
-    cursor.execute("SELECT nmID, brand, subjectName, salePrice, purchase_price, delivery_to_warehouse, wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, cost_price, profit_per_item, commission_percent FROM cards")
+    cursor.execute(
+        "SELECT nmID, brand, subjectName, salePrice, purchase_price, delivery_to_warehouse, wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, cost_price, profit_per_item, commission_percent FROM cards")
     card_details_raw = cursor.fetchall()
     card_details = {
         row[0]: {
@@ -252,9 +289,6 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict):
             profit_per_item = card_details.get(nmID, {}).get("profit_per_item", 0)
             total_profit = round((profit_per_item * quantity) - ad_spend, 2)
             print(total_profit)
-
-
-
 
             cursor.execute("SELECT COUNT(*) FROM sales WHERE nm_ID = ? AND date = ?", (nmID, date))
             exists = cursor.fetchone()[0] > 0
@@ -310,7 +344,7 @@ def calculate_total_profit_for_day():
     cursor = conn.cursor()
 
     # Получаем все строки за вчерашний день
-    yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
+    yesterday = (datetime.utcnow() - timedelta(days=glebas)).date().isoformat()
     cursor.execute("SELECT total_profit FROM sales WHERE date = ?", (yesterday,))
     rows = cursor.fetchall()
 
@@ -321,13 +355,12 @@ def calculate_total_profit_for_day():
     conn.close()
 
 
-
 def export_sales_to_excel():
     # Подключение к БД
     conn = sqlite3.connect("wildberries_cards.db")
 
     # Получаем дату вчерашнего дня
-    yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
+    yesterday = (datetime.utcnow() - timedelta(days=glebas)).date().isoformat()
 
     # Запрос всех строк за вчера
     query = "SELECT * FROM sales WHERE date = ?"
@@ -339,6 +372,7 @@ def export_sales_to_excel():
     print(f"✅ Данные успешно экспортированы в {filename}")
 
     conn.close()
+
 
 def ensure_columns_exist(conn, table_name, data_dict):
     cursor = conn.cursor()
@@ -358,9 +392,9 @@ def ensure_columns_exist(conn, table_name, data_dict):
 
     conn.commit()
 
+
 def safe_int(val):
     return int(val) if isinstance(val, (int, float)) else 0
-
 
 
 def calculate_bundle_profits():
@@ -369,10 +403,10 @@ def calculate_bundle_profits():
 
     # Получаем все нужные данные
     cursor.execute("""
-        SELECT imtID, imtName, total_profit
-        FROM sales
-        WHERE date = (SELECT MAX(date) FROM sales)
-    """)
+                   SELECT imtID, imtName, total_profit
+                   FROM sales
+                   WHERE date = (SELECT MAX (date) FROM sales)
+                   """)
     rows = cursor.fetchall()
     conn.close()
 
@@ -401,9 +435,10 @@ def calculate_bundle_profits():
 
     return results  # можно будет использовать в FastAPI
 
+
 def calculate_profit_by_bundles():
     # Вчерашняя дата
-    yesterday = (datetime.utcnow() - timedelta(days=0)).date().isoformat()
+    yesterday = (datetime.utcnow() - timedelta(days=glebas)).date().isoformat()
 
     # Подключение к базе
     conn = sqlite3.connect("wildberries_cards.db")
@@ -411,12 +446,12 @@ def calculate_profit_by_bundles():
 
     # Получаем все данные по вчерашнему дню
     cursor.execute("""
-        SELECT imtID, imtName, vendorCode, cost_price, total_profit, ordersCount
-        FROM sales 
-        WHERE imtID IS NOT NULL 
-          AND total_profit IS NOT NULL 
-          AND date = ?
-    """, (yesterday,))
+                   SELECT imtID, imtName, vendorCode, cost_price, total_profit, ordersCount
+                   FROM sales
+                   WHERE imtID IS NOT NULL
+                     AND total_profit IS NOT NULL
+                     AND date = ?
+                   """, (yesterday,))
     rows = cursor.fetchall()
 
     # Группировка по связкам
@@ -453,13 +488,95 @@ def calculate_profit_by_bundles():
         print(f"\n🔹 {bundle['title']} → {bundle['total_profit']} ₽")
         print("   📦 Товары в связке:")
         for item in bundle["items"]:
-            print(f"     • {item['vendorCode']} | Себестоимость: {item['cost_price']} ₽ | Заказов: {item['ordersCount']} шт")
+            print(
+                f"     • {item['vendorCode']} | Себестоимость: {item['cost_price']} ₽ | Заказов: {item['ordersCount']} шт")
 
-#asyncio.run(main())
-#calculate_total_profit_for_day()
+
+def ensure_columns_exist2(db_path="wildberries_cards.db"):
+    required_columns = {
+        "nmID": "INTEGER",
+        "brand": "TEXT",
+        "imtID": "TEXT",
+        "vendorCode": "TEXT",
+        "subjectName": "TEXT",
+        "brand": "TEXT",  # 👈 у тебя не хватает этого поля
+        "purchase_price": "REAL",
+        "delivery_to_warehouse": "REAL",
+        "commission_percent": "REAL",
+        "wb_logistics": "REAL",
+        "packaging": "REAL",
+        "fuel": "REAL",
+        "gift": "REAL",
+        "defect_percent": "REAL",
+        "salePrice": "REAL",
+        "tax_rub": "REAL",
+        "wb_commission_rub": "REAL",
+        "cost_price": "REAL",
+        "profit_per_item": "REAL"
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Получаем текущие столбцы таблицы
+    cursor.execute("PRAGMA table_info(cards)")
+    existing_columns = set(row[1] for row in cursor.fetchall())
+
+    # Добавляем недостающие
+    for column, col_type in required_columns.items():
+        if column not in existing_columns:
+            print(f"➕ Добавляется столбец: {column} ({col_type})")
+            cursor.execute(f"ALTER TABLE cards ADD COLUMN {column} {col_type}")
+
+    conn.commit()
+    conn.close()
+    print("✅ Проверка и создание недостающих столбцов завершена.")
+
+
+def ensure_sales_columns_exist(db_path="wildberries_cards.db"):
+    required_columns = {
+        "nmID": "INTEGER",
+        "brand": "TEXT",
+        "subjectName": "TEXT",
+        "salePrice": "REAL",
+        "purchase_price": "REAL",
+        "delivery_to_warehouse": "REAL",
+        "wb_commission_rub": "REAL",
+        "wb_logistics": "REAL",
+        "tax_rub": "REAL",
+        "packaging": "REAL",
+        "fuel": "REAL",
+        "gift": "REAL",
+        "defect_percent": "REAL",
+        "cost_price": "REAL",
+        "profit_per_item": "REAL",
+        "commission_percent": "REAL"
+    }
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Получаем текущие столбцы таблицы sales
+    cursor.execute("PRAGMA table_info(sales)")
+    existing_columns = set(row[1] for row in cursor.fetchall())
+
+    # Добавляем недостающие
+    for column, col_type in required_columns.items():
+        if column not in existing_columns:
+            print(f"➕ Добавляется столбец в sales: {column} ({col_type})")
+            cursor.execute(f"ALTER TABLE sales ADD COLUMN {column} {col_type}")
+
+    conn.commit()
+    conn.close()
+    print("✅ Структура таблицы sales обновлена.")
+
+
+# asyncio.run(main())
+# calculate_total_profit_for_day()
 
 if __name__ == "__main__":
+    # ensure_columns_exist2()
+    # ensure_sales_columns_exist()
     asyncio.run(main())
     calculate_total_profit_for_day()
     calculate_profit_by_bundles()
-
