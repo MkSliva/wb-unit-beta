@@ -11,6 +11,24 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [chartData, setChartData] = useState([]);
 
+  const [visibleColumns, setVisibleColumns] = useState({
+    ordersCount: true,
+    ad_spend: true,
+    total_profit: true,
+  });
+
+  const toggleColumn = (col) => {
+    setVisibleColumns((prev) => ({ ...prev, [col]: !prev[col] }));
+  };
+
+  const formatMoney = (val) =>
+    new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: "RUB",
+      maximumFractionDigits: 2,
+    }).format(val);
+
+
   useEffect(() => {
     fetch(`http://localhost:8000/api/sales_grouped_detailed_range?start_date=${startDate}&end_date=${endDate}`)
       .then((res) => res.json())
@@ -71,8 +89,12 @@ export default function Dashboard() {
   const totalOrders = groupDetails.reduce((acc, item) => acc + item.ordersCount, 0);
   const totalProfit = groupDetails.reduce((acc, item) => acc + item.total_profit, 0);
   const totalAd = groupDetails.reduce((acc, item) => acc + item.ad_spend, 0);
-  const avgSalePrice = (groupDetails.reduce((acc, item) => acc + item.salePrice, 0) / groupDetails.length || 0).toFixed(2);
-  const avgCost = (groupDetails.reduce((acc, item) => acc + item.cost_price, 0) / groupDetails.length || 0).toFixed(2);
+  const avgSalePrice = groupDetails.length
+    ? groupDetails.reduce((acc, item) => acc + item.salePrice, 0) / groupDetails.length
+    : 0;
+  const avgCost = groupDetails.length
+    ? groupDetails.reduce((acc, item) => acc + item.cost_price, 0) / groupDetails.length
+    : 0;
 
   return (
     <div className="min-h-screen bg-gray-100 p-5 font-sans">
@@ -93,15 +115,42 @@ export default function Dashboard() {
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
         />
+
+      </div>
+
+      <div className="flex space-x-4 mb-4">
+        {[
+          { key: "ordersCount", label: "Заказы" },
+          { key: "ad_spend", label: "Реклама" },
+          { key: "total_profit", label: "Прибыль" },
+        ].map((col) => (
+          <label key={col.key} className="flex items-center space-x-1">
+            <input
+              type="checkbox"
+              checked={visibleColumns[col.key]}
+              onChange={() => toggleColumn(col.key)}
+            />
+            <span>{col.label}</span>
+          </label>
+        ))}
+
       </div>
 
       <table className="table-auto w-full text-center bg-white shadow-md">
         <thead className="bg-gray-200 cursor-pointer">
           <tr>
             <th className="p-2" onClick={() => handleSort("imtID")}>imtID</th>
-            <th className="p-2" onClick={() => handleSort("ordersCount")}>Заказы</th>
-            <th className="p-2" onClick={() => handleSort("ad_spend")}>Реклама</th>
-            <th className="p-2" onClick={() => handleSort("total_profit")}>Прибыль</th>
+
+            {visibleColumns.ordersCount && (
+              <th className="p-2" onClick={() => handleSort("ordersCount")}>Заказы</th>
+            )}
+            {visibleColumns.ad_spend && (
+              <th className="p-2" onClick={() => handleSort("ad_spend")}>Реклама</th>
+            )}
+            {visibleColumns.total_profit && (
+              <th className="p-2" onClick={() => handleSort("total_profit")}>Прибыль</th>
+            )}
+
           </tr>
         </thead>
         <tbody>
@@ -112,9 +161,11 @@ export default function Dashboard() {
               className="border-b hover:bg-gray-50 cursor-pointer"
             >
               <td className="py-2">{group.imtID}</td>
-              <td>{group.ordersCount}</td>
-              <td>{group.ad_spend}</td>
-              <td>{group.total_profit}</td>
+
+              {visibleColumns.ordersCount && <td>{group.ordersCount}</td>}
+              {visibleColumns.ad_spend && <td>{formatMoney(group.ad_spend)}</td>}
+              {visibleColumns.total_profit && <td>{formatMoney(group.total_profit)}</td>}
+
             </tr>
           ))}
         </tbody>
@@ -125,17 +176,14 @@ export default function Dashboard() {
           <div className="bg-white p-8 rounded-lg w-3/4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-2">📊 Статистика по связке (imtID: {selectedImt})</h3>
             <p><strong>Заказов:</strong> {totalOrders}</p>
-            <p><strong>Прибыль:</strong> {totalProfit.toFixed(2)} ₽</p>
-            <p><strong>Реклама:</strong> {totalAd.toFixed(2)} ₽</p>
-            <p><strong>Средняя цена продажи:</strong> {avgSalePrice} ₽</p>
-            <p><strong>Средняя себестоимость:</strong> {avgCost} ₽</p>
+
+            <p><strong>Прибыль:</strong> {formatMoney(totalProfit)}</p>
+            <p><strong>Реклама:</strong> {formatMoney(totalAd)}</p>
+            <p><strong>Средняя цена продажи:</strong> {formatMoney(avgSalePrice)}</p>
+            <p><strong>Средняя себестоимость:</strong> {formatMoney(avgCost)}</p>
 
             {chartData.length > 0 && (
-
               <div className="my-4 flex justify-center">
-
-
-
                 <LineChart width={700} height={300} data={chartData}>
                   <CartesianGrid stroke="#ccc" />
                   <XAxis dataKey="date" />
@@ -160,7 +208,6 @@ export default function Dashboard() {
                   <th className="p-2">Прибыль</th>
                   <th className="p-2">Цена продажи</th>
                   <th className="p-2">Себестоимость</th>
-
                 </tr>
               </thead>
               <tbody>
@@ -168,10 +215,10 @@ export default function Dashboard() {
                   <tr key={index} className="border-b">
                     <td className="py-1">{item.vendorCode}</td>
                     <td>{item.ordersCount}</td>
-                    <td>{item.ad_spend}</td>
-                    <td>{item.total_profit}</td>
-                    <td>{item.salePrice}</td>
-                    <td>{item.cost_price}</td>
+                    <td>{formatMoney(item.ad_spend)}</td>
+                    <td>{formatMoney(item.total_profit)}</td>
+                    <td>{formatMoney(item.salePrice)}</td>
+                    <td>{formatMoney(item.cost_price)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -185,7 +232,6 @@ export default function Dashboard() {
               }}
 
               className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-
             >
               Закрыть
             </button>

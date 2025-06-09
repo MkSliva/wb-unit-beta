@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi import Request
 from datetime import datetime
+import os
 import sqlite3
 import pandas as pd
 
 app = FastAPI()
+
+DB_PATH = os.getenv("DB_PATH", "backend/wildberries_cards.db")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,7 +33,7 @@ def get_sales_grouped_detailed_range(
         start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
         end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect("/Users/kirillmorozov/PycharmProjects/PythonProject/backend/wildberries_cards.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     query = """
@@ -40,7 +43,6 @@ def get_sales_grouped_detailed_range(
             """
     df = pd.read_sql_query(query, conn, params=(start_date, end_date))
     df = df.fillna(0)
-    print(df[["ad_spend", "imtID"]])
 
     conn.close()
 
@@ -81,7 +83,7 @@ def get_sales_by_imt(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect("/Users/kirillmorozov/PycharmProjects/PythonProject/backend/wildberries_cards.db")
+    conn = sqlite3.connect(DB_PATH)
 
     query = """
         SELECT nm_ID, vendorCode, date, ordersCount, ad_spend, total_profit, salePrice, cost_price
@@ -122,7 +124,9 @@ def get_sales_by_imt_daily(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect("/Users/kirillmorozov/PycharmProjects/PythonProject/backend/wildberries_cards.db")
+
+    conn = sqlite3.connect(DB_PATH)
+
 
     query = """
         SELECT date, SUM(ordersCount) AS ordersCount, SUM(ad_spend) AS ad_spend, SUM(total_profit) AS total_profit
