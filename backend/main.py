@@ -5,12 +5,16 @@ from fastapi import Request
 from datetime import datetime
 from pydantic import BaseModel
 import os
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import pandas as pd
 
 app = FastAPI()
 
-DB_PATH = os.getenv("DB_PATH", "backend/wildberries_cards.db")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,14 +38,14 @@ def get_sales_grouped_detailed_range(
         start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
         end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect(DB_PATH)
+    conn = psycopg2.connect(DB_URL)
 
     query = """
             SELECT imtID, vendorCode, ordersCount, ad_spend, salePrice,
                    purchase_price, delivery_to_warehouse, wb_commission_rub,
                    wb_logistics, tax_rub, packaging, fuel, gift, defect_percent
             FROM sales
-            WHERE date BETWEEN ? AND ?
+            WHERE date BETWEEN %s AND %s
         """
     df = pd.read_sql_query(query, conn, params=(start_date, end_date))
     conn.close()
@@ -89,14 +93,14 @@ def get_sales_by_imt(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect(DB_PATH)
+    conn = psycopg2.connect(DB_URL)
 
     query = """
         SELECT nm_ID, vendorCode, date, ordersCount, ad_spend, salePrice,
                purchase_price, delivery_to_warehouse, wb_commission_rub,
                wb_logistics, tax_rub, packaging, fuel, gift, defect_percent
         FROM sales
-        WHERE imtID = ? AND date BETWEEN ? AND ?
+        WHERE imtID = %s AND date BETWEEN %s AND %s
         ORDER BY date ASC
     """
     df = pd.read_sql_query(query, conn, params=(imt_id, start_date, end_date))
@@ -150,14 +154,14 @@ def get_sales_by_imt_daily(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
-    conn = sqlite3.connect(DB_PATH)
+    conn = psycopg2.connect(DB_URL)
 
     query = """
         SELECT date, ordersCount, ad_spend, salePrice,
                purchase_price, delivery_to_warehouse, wb_commission_rub,
                wb_logistics, tax_rub, packaging, fuel, gift, defect_percent
         FROM sales
-        WHERE imtID = ? AND date BETWEEN ? AND ?
+        WHERE imtID = %s AND date BETWEEN %s AND %s
         ORDER BY date ASC
     """
 
@@ -211,7 +215,7 @@ class CostUpdate(BaseModel):
 
 @app.post("/api/update_costs")
 def update_costs(update: CostUpdate):
-    conn = sqlite3.connect(DB_PATH)
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
 
     fields = []
@@ -229,64 +233,32 @@ def update_costs(update: CostUpdate):
     ]:
         val = getattr(update, field)
         if val is not None:
-            fields.append(f"{field} = ?")
+            fields.append(f"{field} = %s")
             values.append(val)
 
     updated_rows = 0
 
     if fields:
-        query = f"UPDATE sales SET {', '.join(fields)} WHERE vendorCode = ? AND date >= ?"
+        query = f"UPDATE sales SET {', '.join(fields)} WHERE vendorCode = %s AND date >= %s"
         cursor.execute(query, values + [update.vendorCode, update.start_date])
-
-        # Пересчёт cost_price и total_profit для изменённых строк
-        rows = cursor.execute(
+        cursor.execute(
             """
-            SELECT rowid, ordersCount, ad_spend, salePrice,
-                   purchase_price, delivery_to_warehouse, wb_commission_rub,
-                   wb_logistics, tax_rub, packaging, fuel, gift, defect_percent
-            FROM sales
-            WHERE vendorCode = ? AND date >= ?
+            UPDATE sales
+            SET cost_price = COALESCE(purchase_price,0) + COALESCE(delivery_to_warehouse,0) +
+                COALESCE(wb_commission_rub,0) + COALESCE(wb_logistics,0) + COALESCE(tax_rub,0) +
+                COALESCE(packaging,0) + COALESCE(fuel,0) + COALESCE(gift,0) + COALESCE(defect_percent,0),
+                total_profit = (salePrice - (COALESCE(purchase_price,0) + COALESCE(delivery_to_warehouse,0) +
+                COALESCE(wb_commission_rub,0) + COALESCE(wb_logistics,0) + COALESCE(tax_rub,0) +
+                COALESCE(packaging,0) + COALESCE(fuel,0) + COALESCE(gift,0) + COALESCE(defect_percent,0))) * ordersCount - ad_spend
+            WHERE vendorCode = %s AND date >= %s
             """,
             (update.vendorCode, update.start_date),
-        ).fetchall()
-
-        for row in rows:
-            (
-                rowid,
-                ordersCount,
-                ad_spend,
-                salePrice,
-                purchase_price,
-                delivery_to_warehouse,
-                wb_commission_rub,
-                wb_logistics,
-                tax_rub,
-                packaging,
-                fuel,
-                gift,
-                defect_percent,
-            ) = row
-            cost_price = (
-                (purchase_price or 0)
-                + (delivery_to_warehouse or 0)
-                + (wb_commission_rub or 0)
-                + (wb_logistics or 0)
-                + (tax_rub or 0)
-                + (packaging or 0)
-                + (fuel or 0)
-                + (gift or 0)
-                + (defect_percent or 0)
-            )
-            profit = (salePrice - cost_price) * ordersCount - ad_spend
-            cursor.execute(
-                "UPDATE sales SET cost_price = ?, total_profit = ? WHERE rowid = ?",
-                (cost_price, profit, rowid),
-            )
-            updated_rows += 1
+        )
+        updated_rows = cursor.rowcount
 
         # Обновляем базовую таблицу cards для будущих расчётов
         cursor.execute(
-            f"UPDATE cards SET {', '.join(fields)} WHERE vendorCode = ?",
+            f"UPDATE cards SET {', '.join(fields)} WHERE vendorCode = %s",
             values + [update.vendorCode],
         )
 
