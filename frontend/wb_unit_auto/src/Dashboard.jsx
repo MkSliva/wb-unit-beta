@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [showModal, setShowModal] = useState(false);
   const [chartData, setChartData] = useState([]);
+
   const [visibleColumns, setVisibleColumns] = useState({
     ordersCount: true,
     ad_spend: true,
@@ -26,6 +27,7 @@ export default function Dashboard() {
       currency: "RUB",
       maximumFractionDigits: 2,
     }).format(val);
+
 
   useEffect(() => {
     fetch(`http://localhost:8000/api/sales_grouped_detailed_range?start_date=${startDate}&end_date=${endDate}`)
@@ -113,6 +115,7 @@ export default function Dashboard() {
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
         />
+
       </div>
 
       <div className="flex space-x-4 mb-4">
@@ -130,12 +133,14 @@ export default function Dashboard() {
             <span>{col.label}</span>
           </label>
         ))}
+
       </div>
 
       <table className="table-auto w-full text-center bg-white shadow-md">
         <thead className="bg-gray-200 cursor-pointer">
           <tr>
             <th className="p-2" onClick={() => handleSort("imtID")}>imtID</th>
+
             {visibleColumns.ordersCount && (
               <th className="p-2" onClick={() => handleSort("ordersCount")}>Заказы</th>
             )}
@@ -145,6 +150,7 @@ export default function Dashboard() {
             {visibleColumns.total_profit && (
               <th className="p-2" onClick={() => handleSort("total_profit")}>Прибыль</th>
             )}
+
           </tr>
         </thead>
         <tbody>
@@ -155,9 +161,11 @@ export default function Dashboard() {
               className="border-b hover:bg-gray-50 cursor-pointer"
             >
               <td className="py-2">{group.imtID}</td>
+
               {visibleColumns.ordersCount && <td>{group.ordersCount}</td>}
               {visibleColumns.ad_spend && <td>{formatMoney(group.ad_spend)}</td>}
               {visibleColumns.total_profit && <td>{formatMoney(group.total_profit)}</td>}
+
             </tr>
           ))}
         </tbody>
@@ -168,6 +176,7 @@ export default function Dashboard() {
           <div className="bg-white p-8 rounded-lg w-3/4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-2">📊 Статистика по связке (imtID: {selectedImt})</h3>
             <p><strong>Заказов:</strong> {totalOrders}</p>
+
             <p><strong>Прибыль:</strong> {formatMoney(totalProfit)}</p>
             <p><strong>Реклама:</strong> {formatMoney(totalAd)}</p>
             <p><strong>Средняя цена продажи:</strong> {formatMoney(avgSalePrice)}</p>
@@ -187,6 +196,7 @@ export default function Dashboard() {
                 </LineChart>
               </div>
             )}
+
 
             <h4 className="text-lg font-semibold mt-4">📦 Все товары в связке:</h4>
             <table className="table-auto w-full text-center">
@@ -220,6 +230,7 @@ export default function Dashboard() {
                 setChartData([]);
                 setGroupDetails([]);
               }}
+
               className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
             >
               Закрыть

@@ -124,7 +124,9 @@ def get_sales_by_imt_daily(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
+
     conn = sqlite3.connect(DB_PATH)
+
 
     query = """
         SELECT date, SUM(ordersCount) AS ordersCount, SUM(ad_spend) AS ad_spend, SUM(total_profit) AS total_profit
