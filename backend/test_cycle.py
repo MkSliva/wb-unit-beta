@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-import sqlite3
+import psycopg2
 import asyncio
 import requests
 import httpx
@@ -11,6 +11,10 @@ from collections import defaultdict
 
 load_dotenv("api.env")
 WB_API_KEY = os.getenv("WB_API_KEY")
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # === Safe int ===
 def safe_int(val):
@@ -120,7 +124,7 @@ def get_ad_metrics(date: str):
 
 # === Сохранение в БД ===
 def save_sales_to_db_for_date(sales_data, cards_info, ad_data, date):
-    conn = sqlite3.connect("wildberries_cards.db")
+    conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (

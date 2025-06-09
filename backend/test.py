@@ -1,18 +1,27 @@
-import sqlite3
+import psycopg2
+import os
+
+DB_URL = os.getenv(
+    "DB_URL",
+    "postgresql://postgres:postgres@localhost:5432/wildberries",
+)
 
 # Подключаемся к базе данных
-conn = sqlite3.connect("wildberries_cards.db")
+conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 
 # Обновляем cost_price для нужного vendorCode
 vendor_code = "OppoA96128blue"
 new_cost_price = 3816
 
-cursor.execute("""
+cursor.execute(
+    """
     UPDATE cards
-    SET profit_per_item = ?
-    WHERE vendorCode = ?
-""", (new_cost_price, vendor_code))
+    SET profit_per_item = %s
+    WHERE vendorCode = %s
+    """,
+    (new_cost_price, vendor_code),
+)
 
 # Сохраняем изменения и закрываем соединение
 conn.commit()
@@ -20,21 +29,24 @@ conn.close()
 
 print(f"✅ Стоимость для {vendor_code} обновлена на {new_cost_price}")
 
-import sqlite3
+import psycopg2
 
 # Подключение к базе данных
-conn = sqlite3.connect("wildberries_cards.db")
+conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 
 # VendorCode, который нужно проверить
 vendor_code = "OppoA96128blue"
 
 # Запрос cost_price и profit_per_item
-cursor.execute("""
+cursor.execute(
+    """
     SELECT cost_price, profit_per_item
     FROM cards
-    WHERE vendorCode = ?
-""", (vendor_code,))
+    WHERE vendorCode = %s
+    """,
+    (vendor_code,),
+)
 
 result = cursor.fetchone()
 
