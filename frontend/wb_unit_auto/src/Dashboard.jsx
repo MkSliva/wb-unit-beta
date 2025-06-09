@@ -11,6 +11,19 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [chartData, setChartData] = useState([]);
 
+  const [editData, setEditData] = useState({
+    vendorCode: "",
+    startDate: "",
+    purchase_price: "",
+    delivery_to_warehouse: "",
+    wb_commission_rub: "",
+    wb_logistics: "",
+    tax_rub: "",
+    packaging: "",
+    fuel: "",
+    gift: "",
+    defect_percent: "",
+  });
   const [visibleColumns, setVisibleColumns] = useState({
     ordersCount: true,
     ad_spend: true,
@@ -56,11 +69,13 @@ export default function Dashboard() {
 
       if (details.data) {
         setGroupDetails(details.data);
+
       }
 
       if (chart.data) {
         setChartData(chart.data);
       }
+
 
       setSelectedImt(imtID);
       setShowModal(true);
@@ -95,6 +110,23 @@ export default function Dashboard() {
   const avgCost = groupDetails.length
     ? groupDetails.reduce((acc, item) => acc + item.cost_price, 0) / groupDetails.length
     : 0;
+
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const submitCostUpdate = async () => {
+    if (!editData.vendorCode || !editData.startDate) return;
+    await fetch("http://localhost:8000/api/update_costs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editData),
+    });
+    fetchGroupDetails(selectedImt);
+  };
+
 
   return (
     <div className="min-h-screen bg-gray-100 p-5 font-sans">
@@ -133,8 +165,8 @@ export default function Dashboard() {
             <span>{col.label}</span>
           </label>
         ))}
-
       </div>
+
 
       <table className="table-auto w-full text-center bg-white shadow-md">
         <thead className="bg-gray-200 cursor-pointer">
@@ -199,30 +231,100 @@ export default function Dashboard() {
 
 
             <h4 className="text-lg font-semibold mt-4">📦 Все товары в связке:</h4>
-            <table className="table-auto w-full text-center">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-2">vendorCode</th>
-                  <th className="p-2">Заказы</th>
-                  <th className="p-2">Реклама</th>
-                  <th className="p-2">Прибыль</th>
-                  <th className="p-2">Цена продажи</th>
-                  <th className="p-2">Себестоимость</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupDetails.map((item, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-1">{item.vendorCode}</td>
-                    <td>{item.ordersCount}</td>
-                    <td>{formatMoney(item.ad_spend)}</td>
-                    <td>{formatMoney(item.total_profit)}</td>
-                    <td>{formatMoney(item.salePrice)}</td>
-                    <td>{formatMoney(item.cost_price)}</td>
+              <table className="table-auto w-full text-center">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-2">vendorCode</th>
+                    <th className="p-2">Заказы</th>
+                    <th className="p-2">Реклама</th>
+                    <th className="p-2">Прибыль</th>
+                    <th className="p-2">Цена продажи</th>
+                    <th className="p-2">Себестоимость</th>
+                    <th className="p-2">Закуп</th>
+                    <th className="p-2">Доставка</th>
+                    <th className="p-2">Комиссия</th>
+                    <th className="p-2">Логистика</th>
+                    <th className="p-2">Налог</th>
+                    <th className="p-2">Упак.</th>
+                    <th className="p-2">Топливо</th>
+                    <th className="p-2">Подарок</th>
+                    <th className="p-2">Брак</th>
+
                   </tr>
+                </thead>
+                <tbody>
+                  {groupDetails.map((item, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="py-1">{item.vendorCode}</td>
+                      <td>{item.ordersCount}</td>
+                      <td>{formatMoney(item.ad_spend)}</td>
+                      <td>{formatMoney(item.total_profit)}</td>
+                      <td>{formatMoney(item.salePrice)}</td>
+                      <td>{formatMoney(item.cost_price)}</td>
+                      <td>{formatMoney(item.purchase_price)}</td>
+                      <td>{formatMoney(item.delivery_to_warehouse)}</td>
+                      <td>{formatMoney(item.wb_commission_rub)}</td>
+                      <td>{formatMoney(item.wb_logistics)}</td>
+                      <td>{formatMoney(item.tax_rub)}</td>
+                      <td>{formatMoney(item.packaging)}</td>
+                      <td>{formatMoney(item.fuel)}</td>
+                      <td>{formatMoney(item.gift)}</td>
+                      <td>{formatMoney(item.defect_percent)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="mt-4 space-y-2">
+                <h4 className="font-semibold">Изменить себестоимость</h4>
+                <select
+                  className="border p-1"
+                  name="vendorCode"
+                  value={editData.vendorCode}
+                  onChange={handleEditChange}
+                >
+                  <option value="">Товар</option>
+                  {groupDetails.map((g) => (
+                    <option key={g.vendorCode} value={g.vendorCode}>
+                      {g.vendorCode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  name="startDate"
+                  className="border p-1 ml-2"
+                  value={editData.startDate}
+                  onChange={handleEditChange}
+                />
+                {[
+                  "purchase_price",
+                  "delivery_to_warehouse",
+                  "wb_commission_rub",
+                  "wb_logistics",
+                  "tax_rub",
+                  "packaging",
+                  "fuel",
+                  "gift",
+                  "defect_percent",
+                ].map((field) => (
+                  <input
+                    key={field}
+                    name={field}
+                    type="number"
+                    placeholder={field}
+                    className="border p-1 ml-2 w-24"
+                    value={editData[field]}
+                    onChange={handleEditChange}
+                  />
                 ))}
-              </tbody>
-            </table>
+                <button
+                  onClick={submitCostUpdate}
+                  className="ml-2 bg-green-500 text-white px-2 py-1 rounded"
+                >
+                  Сохранить
+                </button>
+              </div>
 
             <button
               onClick={() => {
