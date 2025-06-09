@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from "recharts";
 
 export default function Dashboard() {
   const [data, setData] = useState([]);
@@ -8,6 +9,7 @@ export default function Dashboard() {
   const [endDate, setEndDate] = useState("2025-06-09");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [showModal, setShowModal] = useState(false);
+  const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
     fetch(`http://localhost:8000/api/sales_grouped_detailed_range?start_date=${startDate}&end_date=${endDate}`)
@@ -15,21 +17,35 @@ export default function Dashboard() {
       .then((json) => {
         setData(json.data);
         setGroupDetails([]);
+        setChartData([]);
         setSelectedImt(null);
       });
   }, [startDate, endDate]);
 
   const fetchGroupDetails = async (imtID) => {
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/sales_by_imt?imt_id=${imtID}&start_date=${startDate}&end_date=${endDate}`
-      );
-      const result = await response.json();
-      if (result.data) {
-        setGroupDetails(result.data);
-        setSelectedImt(imtID);
-        setShowModal(true);
+      const [detailsRes, chartRes] = await Promise.all([
+        fetch(
+          `http://localhost:8000/api/sales_by_imt?imt_id=${imtID}&start_date=${startDate}&end_date=${endDate}`
+        ),
+        fetch(
+          `http://localhost:8000/api/sales_by_imt_daily?imt_id=${imtID}&start_date=${startDate}&end_date=${endDate}`
+        )
+      ]);
+
+      const details = await detailsRes.json();
+      const chart = await chartRes.json();
+
+      if (details.data) {
+        setGroupDetails(details.data);
       }
+
+      if (chart.data) {
+        setChartData(chart.data);
+      }
+
+      setSelectedImt(imtID);
+      setShowModal(true);
     } catch (error) {
       console.error("Ошибка при получении деталей:", error);
     }
@@ -107,6 +123,21 @@ export default function Dashboard() {
             <p><strong>Средняя цена продажи:</strong> {avgSalePrice} ₽</p>
             <p><strong>Средняя себестоимость:</strong> {avgCost} ₽</p>
 
+            {chartData.length > 0 && (
+              <div style={{ margin: "20px 0" }}>
+                <LineChart width={700} height={300} data={chartData}>
+                  <CartesianGrid stroke="#ccc" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="ordersCount" stroke="#8884d8" name="Заказы" />
+                  <Line type="monotone" dataKey="ad_spend" stroke="#82ca9d" name="Реклама" />
+                  <Line type="monotone" dataKey="total_profit" stroke="#ff7300" name="Прибыль" />
+                </LineChart>
+              </div>
+            )}
+
             <h4>📦 Все товары в связке:</h4>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead>
@@ -133,7 +164,16 @@ export default function Dashboard() {
               </tbody>
             </table>
 
-            <button onClick={() => setShowModal(false)} style={{ marginTop: "20px" }}>Закрыть</button>
+            <button
+              onClick={() => {
+                setShowModal(false);
+                setChartData([]);
+                setGroupDetails([]);
+              }}
+              style={{ marginTop: "20px" }}
+            >
+              Закрыть
+            </button>
           </div>
         </div>
       )}

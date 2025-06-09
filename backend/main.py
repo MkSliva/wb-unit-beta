@@ -115,3 +115,38 @@ def get_sales_by_imt(
         "data": grouped.to_dict(orient="records")
     }
 
+
+@app.get("/api/sales_by_imt_daily")
+def get_sales_by_imt_daily(
+    imt_id: int,
+    start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
+):
+    conn = sqlite3.connect("/Users/kirillmorozov/PycharmProjects/PythonProject/backend/wildberries_cards.db")
+
+    query = """
+        SELECT date, SUM(ordersCount) AS ordersCount, SUM(ad_spend) AS ad_spend, SUM(total_profit) AS total_profit
+        FROM sales
+        WHERE imtID = ? AND date BETWEEN ? AND ?
+        GROUP BY date
+        ORDER BY date ASC
+    """
+
+    df = pd.read_sql_query(query, conn, params=(imt_id, start_date, end_date))
+    conn.close()
+
+    if df.empty:
+        return {
+            "message": f"No data for imtID {imt_id} between {start_date} and {end_date}",
+            "data": []
+        }
+
+    df = df.fillna(0)
+
+    return {
+        "imtID": imt_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "data": df.to_dict(orient="records")
+    }
+
