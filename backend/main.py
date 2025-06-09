@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi import Request
 from datetime import datetime
+
 from pydantic import BaseModel
 import os
 import psycopg2
@@ -11,10 +12,12 @@ import pandas as pd
 
 app = FastAPI()
 
+
 DB_URL = os.getenv(
     "DB_URL",
     "postgresql://postgres:postgres@localhost:5432/wildberries",
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +41,7 @@ def get_sales_grouped_detailed_range(
         start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
         end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
+
     conn = psycopg2.connect(DB_URL)
 
     query = """
@@ -48,6 +52,8 @@ def get_sales_grouped_detailed_range(
             WHERE date BETWEEN %s AND %s
         """
     df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+
+
     conn.close()
 
     df = df.fillna(0)
@@ -93,7 +99,9 @@ def get_sales_by_imt(
     start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
     end_date: str = Query(..., description="End date в формате YYYY-MM-DD")
 ):
+
     conn = psycopg2.connect(DB_URL)
+
 
     query = """
         SELECT nm_ID, vendorCode, date, ordersCount, ad_spend, salePrice,
@@ -266,4 +274,5 @@ def update_costs(update: CostUpdate):
     conn.close()
 
     return {"updated": updated_rows}
+
 

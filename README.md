@@ -7,6 +7,7 @@
 2. Создайте файл `backend/api.env` на основе `backend/api.env.example` и укажите ваш `WB_API_KEY`.
 3. Установите зависимости (пример):
    ```bash
+
    pip install fastapi pandas uvicorn psycopg2-binary
    ```
 4. Запустите PostgreSQL через `docker-compose`:
@@ -14,11 +15,15 @@
    docker compose up -d
    ```
 5. Запустите сервер:
+
    ```bash
    uvicorn backend.main:app --reload
    ```
 
+
 Переменная `DB_URL` указывает строку подключения к PostgreSQL и может быть задана через переменную окружения. По умолчанию используется `postgresql://postgres:postgres@localhost:5432/wildberries`.
+
+
 
 ## Запуск frontend
 1. Требуется Node.js 18+.
@@ -43,3 +48,4 @@ docker compose up -d
 ```
 
 Это создаст контейнер с базой `wildberries` и пользователем `postgres`.
+
