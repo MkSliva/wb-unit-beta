@@ -23,6 +23,7 @@ def init_db():
         )
         """
     )
+    print(conn.status)
     conn.commit()
     conn.close()
 
@@ -59,3 +60,4 @@ def save_cards_to_db(cards):
     conn.close()
 
 
+init_db()
