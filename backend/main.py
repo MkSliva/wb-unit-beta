@@ -613,6 +613,7 @@ def get_missing_costs(
                         WHERE COALESCE("ordersCount", 0) > 0
                 )
                   AND date BETWEEN %s AND %s
+                  AND COALESCE("ordersCount", 0) > 0
                   AND (
                         purchase_price IS NULL OR purchase_price = 0 OR
                         delivery_to_warehouse IS NULL OR delivery_to_warehouse = 0 OR
