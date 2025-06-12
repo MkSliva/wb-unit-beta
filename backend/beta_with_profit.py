@@ -24,6 +24,7 @@ tax_percent = 12 # Процент налога, можно сделать его
 # 🕛 Даты для выборки
 glebas = 1 # Количество дней назад для yesterday
 yesterday = (datetime.utcnow() - timedelta(glebas)).date().isoformat()
+print(yesterday)
 
 # Заголовки для запросов к API Wildberries
 # Используем WB_API_KEY, если у вас есть отдельный "стандартный" ключ,
@@ -172,7 +173,7 @@ def get_all_discounted_prices(api_key: str) -> dict:
 # === 2. Получение метрик продаж ===
 def get_sales_data(nmIDs: list, token: str):
     url = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail/history"
-    headers = {"Authorization": token}
+    headers = {"Authorization": WB_API_KEY}
 
     payload = {
         "nmIDs": nmIDs,
@@ -427,7 +428,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 subject_name_lower = subject_name_from_info.strip().lower()
                 if subject_name_lower in COMMISSIONS_DATA:
                     commission_percent_for_item = COMMISSIONS_DATA[subject_name_lower]
-                    # Формула wb_commission_rub: actual_discounted_price / 100 * comissiom_percent + 1,1
+                    # Формула wb_commission_rub: actual_discounted_price / 100 * comissiom_percent + 1.1
                     calculated_wb_commission_rub = actual_price / 100 * (commission_percent_for_item + 1.1)
                 # Формула tax_rub: actual_discounted_price / 100 * tax_percent
                 calculated_tax_rub = (actual_price / 100 * tax_percent)
@@ -580,7 +581,7 @@ async def main():
 
     # Уменьшил количество итераций для быстрого тестирования,
     # для продакшена верните len(nm_ids)
-    for i in range(0, min(len(nm_ids)), batch_size): # Ограничил до первых 20 nm_ids для теста
+    for i in range(0, (len(nm_ids)), batch_size): # Ограничил до первых 20 nm_ids для теста
         batch = nm_ids[i:i + batch_size]
         print(f"⏳ Запрос {i // batch_size + 1} из {len(nm_ids) // batch_size + 1}")
         sales_data = get_sales_data(batch, token)

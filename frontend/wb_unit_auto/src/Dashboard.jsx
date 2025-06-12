@@ -1,4 +1,14 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react"; // Добавлен useMemo
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 const Dashboard = () => {
   const [startDate, setStartDate] = useState("");
@@ -14,16 +24,11 @@ const Dashboard = () => {
   const [dailySales, setDailySales] = useState([]);
   const [editData, setEditData] = useState({});
 
-  // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
+  // *** НОВЫЕ СОСТОЯНИЯ ДЛЯ ДАННЫХ ГРАФИКОВ ***
+  const [purchasePriceHistory, setPurchasePriceHistory] = useState([]);
 
-  // *** УДАЛЕННЫЕ ФИЛЬТРЫ (ЕСЛИ НЕ НУЖНЫ, ИНАЧЕ ОСТАВЬТЕ ПРЕДЫДУЩИЙ ВАРИАНТ) ***
-  // Если вы хотите только сортировку, а не фильтры по каждому столбцу,
-  // то можете удалить state filters и handleFilterChange,
-  // а также логику формирования queryParams в fetchData.
-  // Если вам нужны и фильтры, и сортировка, то оставьте filters state и его логику.
-  // const [filters, setFilters] = useState({ ... });
-  // const handleFilterChange = (e) => { ... };
+  // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
 
   const [newBatchData, setNewBatchData] = useState({
     vendor_code: "",
@@ -52,10 +57,6 @@ const Dashboard = () => {
       end_date: endDate,
     });
 
-    // Если вы решили оставить фильтры, то здесь добавьте их логику:
-    // if (filters.imtid) queryParams.append("imtid_filter", filters.imtid);
-    // ... и так далее для всех фильтров
-
     try {
       const response = await fetch(
         `http://localhost:8000/api/sales_grouped_detailed_range?${queryParams.toString()}`
@@ -75,7 +76,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]); // Удалены filters из зависимостей, если вы убрали фильтрацию
+  }, [startDate, endDate]);
 
   useEffect(() => {
     fetchData();
@@ -83,32 +84,31 @@ const Dashboard = () => {
 
   // *** ФУНКЦИЯ ДЛЯ ОБРАБОТКИ СОРТИРОВКИ ***
   const requestSort = (key) => {
-    let direction = 'ascending';
-    // Если уже сортируем по этому ключу и направление - "ascending", меняем на "descending"
-    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending';
+    let direction = "ascending";
+    if (sortConfig.key === key && sortConfig.direction === "ascending") {
+      direction = "descending";
     }
     setSortConfig({ key, direction });
   };
 
   // *** МЕМОИЗИРОВАННЫЕ ОТСОРТИРОВАННЫЕ ДАННЫЕ ***
   const sortedGroupedSales = useMemo(() => {
-    let sortableItems = [...groupedSales]; // Создаем копию массива
+    let sortableItems = [...groupedSales];
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
         const valA = a[sortConfig.key];
         const valB = b[sortConfig.key];
 
-        // Обработка NaN/null значений: перемещаем их в конец при сортировке
-        // (или в начало, в зависимости от желаемого поведения)
-        if (valA === null || isNaN(valA) || typeof valA === 'undefined') return sortConfig.direction === 'ascending' ? 1 : -1;
-        if (valB === null || isNaN(valB) || typeof valB === 'undefined') return sortConfig.direction === 'ascending' ? -1 : 1;
+        if (valA === null || isNaN(valA) || typeof valA === "undefined")
+          return sortConfig.direction === "ascending" ? 1 : -1;
+        if (valB === null || isNaN(valB) || typeof valB === "undefined")
+          return sortConfig.direction === "ascending" ? -1 : 1;
 
         if (valA < valB) {
-          return sortConfig.direction === 'ascending' ? -1 : 1;
+          return sortConfig.direction === "ascending" ? -1 : 1;
         }
         if (valA > valB) {
-          return sortConfig.direction === 'ascending' ? 1 : -1;
+          return sortConfig.direction === "ascending" ? 1 : -1;
         }
         return 0;
       });
@@ -130,6 +130,7 @@ const Dashboard = () => {
         const detailsData = await detailsResponse.json();
         setGroupDetails(detailsData.data);
 
+        // Получение данных для ежедневных графиков (прибыль, заказы, реклама)
         const dailyResponse = await fetch(
           `http://localhost:8000/api/sales_by_imt_daily?imt_id=${imtId}&start_date=${startDate}&end_date=${endDate}`
         );
@@ -138,6 +139,37 @@ const Dashboard = () => {
         }
         const dailyData = await dailyResponse.json();
         setDailySales(dailyData.data);
+        console.log("Daily Sales Data:", dailyData.data); // Отладка
+
+        // Получение данных для графика истории закупочной цены
+        let vendorCodeForHistory = '';
+        if (detailsData.data.length > 0) {
+          // Попробуем найти vendorcode, который не пустой
+          const firstValidVendor = detailsData.data.find(item => item.vendorcode);
+          if (firstValidVendor) {
+            vendorCodeForHistory = firstValidVendor.vendorcode;
+          }
+        }
+        console.log("Vendor Code for Purchase Price History:", vendorCodeForHistory); // Отладка
+
+        if (vendorCodeForHistory) {
+          const ppHistoryResponse = await fetch(
+            `http://localhost:8000/api/purchase_price_history_daily?vendor_code=${vendorCodeForHistory}&start_date=${startDate}&end_date=${endDate}`
+          );
+          if (!ppHistoryResponse.ok) {
+            // Обработка ошибки, если история цены не получена
+            const errorText = await ppHistoryResponse.text();
+            console.error("Error fetching purchase price history:", errorText);
+            throw new Error(`HTTP error! status: ${ppHistoryResponse.status}, message: ${errorText}`);
+          }
+          const ppHistoryData = await ppHistoryResponse.json();
+          setPurchasePriceHistory(ppHistoryData);
+          console.log("Purchase Price History Data:", ppHistoryData); // Отладка
+        } else {
+          setPurchasePriceHistory([]); // Очищаем, если нет vendorCode
+          console.log("No valid vendorcode found for purchase price history."); // Отладка
+        }
+
 
         if (detailsData.data.length > 0) {
           const firstVendorData = detailsData.data[0];
@@ -156,8 +188,8 @@ const Dashboard = () => {
           });
         }
       } catch (err) {
-        console.error("Error fetching group details:", err);
-        setError("Не удалось загрузить детали группы. " + err.message);
+        console.error("Error fetching group details or price history:", err); // Обновлено сообщение об ошибке
+        setError("Не удалось загрузить детали группы или историю цен. " + err.message);
       } finally {
         setLoading(false);
       }
@@ -176,6 +208,7 @@ const Dashboard = () => {
     setSelectedImt(null);
     setGroupDetails([]);
     setDailySales([]);
+    setPurchasePriceHistory([]);
     setEditData({});
     setError(null);
   };
@@ -196,7 +229,8 @@ const Dashboard = () => {
   };
 
   const submitCostUpdate = async () => {
-    const dataToSend = { ...editData, start_date: startDate };
+    const dataToSend = { ...editData, start_date: editData.start_date || startDate };
+
     try {
       const response = await fetch("http://localhost:8000/api/update_costs", {
         method: "POST",
@@ -308,9 +342,9 @@ const Dashboard = () => {
   // Вспомогательная функция для получения индикатора сортировки
   const getSortIndicator = (key) => {
     if (sortConfig.key === key) {
-      return sortConfig.direction === 'ascending' ? ' ▲' : ' ▼';
+      return sortConfig.direction === "ascending" ? " ▲" : " ▼";
     }
-    return '';
+    return "";
   };
 
   return (
@@ -380,30 +414,23 @@ const Dashboard = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Артикулы
               </th>
-              {/* Удалены поля фильтров, если вы хотите только сортировку */}
-              {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Бренд
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Предмет
-              </th> */}
               <th
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => requestSort('orderscount')}
+                onClick={() => requestSort("orderscount")}
               >
-                Заказы {getSortIndicator('orderscount')}
+                Заказы {getSortIndicator("orderscount")}
               </th>
               <th
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => requestSort('ad_spend')}
+                onClick={() => requestSort("ad_spend")}
               >
-                Реклама {getSortIndicator('ad_spend')}
+                Реклама {getSortIndicator("ad_spend")}
               </th>
               <th
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => requestSort('total_profit')}
+                onClick={() => requestSort("total_profit")}
               >
-                Прибыль {getSortIndicator('total_profit')}
+                Прибыль {getSortIndicator("total_profit")}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Действия
@@ -411,7 +438,7 @@ const Dashboard = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {sortedGroupedSales.map((group) => ( // Используем отсортированные данные
+            {sortedGroupedSales.map((group) => (
               <tr key={group.imtid}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {group.imtid}
@@ -419,13 +446,6 @@ const Dashboard = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {group.vendorcodes}
                 </td>
-                {/* Если нужны Бренд и Предмет, верните их сюда */}
-                {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {group.brand}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {group.subjectname}
-                </td> */}
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {group.orderscount}
                 </td>
@@ -454,8 +474,8 @@ const Dashboard = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-11/12 max-w-5xl max-h-[95vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">
               Детали по IMT ID: {selectedImt}
             </h3>
@@ -587,13 +607,19 @@ const Dashboard = () => {
                             {detail.total_profit.toFixed(2)}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                            {detail.actual_discounted_price.toFixed(2)}
+                            {typeof detail.actual_discounted_price === "number" && !isNaN(detail.actual_discounted_price)
+                              ? detail.actual_discounted_price.toFixed(2) + " ₽"
+                              : "0.00 ₽"}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                            {detail.cost_price.toFixed(2)}
+                            {typeof detail.cost_price === "number" && !isNaN(detail.cost_price)
+                              ? detail.cost_price.toFixed(2) + " ₽"
+                              : "0.00 ₽"}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                            {detail.purchase_price.toFixed(2)}
+                            {typeof detail.purchase_price === "number" && !isNaN(detail.purchase_price)
+                              ? detail.purchase_price.toFixed(2) + " ₽"
+                              : "0.00 ₽"}
                           </td>
                         </tr>
                       ))}
@@ -621,6 +647,16 @@ const Dashboard = () => {
                           <option key={item.vendorcode} value={item.vendorcode} />
                         ))}
                       </datalist>
+                    </label>
+                    <label className="block">
+                      Дата начала действия:
+                      <input
+                        type="date"
+                        name="start_date"
+                        className="border p-2 rounded-md w-full mt-1"
+                        value={editData.start_date || ""}
+                        onChange={handleEditChange}
+                      />
                     </label>
                     <label className="block">
                       Закупочная цена (руб):
@@ -739,6 +775,89 @@ const Dashboard = () => {
                   </button>
                 </div>
 
+                {/* --- ГРАФИКИ --- */}
+
+                {/* График изменения закупочной цены */}
+                <h4 className="text-lg font-semibold mb-2 mt-6">
+                  История закупочной цены ({groupDetails[0]?.vendorcode || 'N/A'})
+                </h4>
+                {purchasePriceHistory.length > 0 ? (
+                  <div style={{ width: "100%", height: 300 }}>
+                    <ResponsiveContainer>
+                      <LineChart
+                        data={purchasePriceHistory}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => `${value.toFixed(2)} ₽`} />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="purchase_price"
+                          stroke="#8884d8"
+                          activeDot={{ r: 8 }}
+                          name="Закупочная цена"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-gray-600">
+                    Данные по истории закупочной цены недоступны для выбранного артикула и периода.
+                  </p>
+                )}
+
+
+                {/* График ежедневной динамики (Заказы, Прибыль, Реклама) */}
+                <h4 className="text-lg font-semibold mb-2 mt-6">
+                  Ежедневная динамика (Заказы, Прибыль, Реклама)
+                </h4>
+                {dailySales.length > 0 ? (
+                  <div style={{ width: "100%", height: 300 }}>
+                    <ResponsiveContainer>
+                      <LineChart
+                        data={dailySales}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis yAxisId="left" orientation="left" />
+                        <YAxis yAxisId="right" orientation="right" />
+                        <Tooltip />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="orderscount"
+                          stroke="#82ca9d"
+                          name="Заказы"
+                        />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="total_profit"
+                          stroke="#8884d8"
+                          name="Прибыль"
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="ad_spend"
+                          stroke="#ffc658"
+                          name="Реклама"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-gray-600">
+                    Данные по ежедневной динамике недоступны для выбранного периода.
+                  </p>
+                )}
+
+
                 <h4 className="text-lg font-semibold mb-2 mt-6">
                   Ежедневные продажи для IMT ID {selectedImt}:
                 </h4>
@@ -790,7 +909,7 @@ const Dashboard = () => {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={closeModal}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
               >
                 Закрыть
               </button>
