@@ -392,6 +392,7 @@ class PurchasePriceHistoryDailyResponse(BaseModel):
 
 
 class LatestCostsResponse(BaseModel):
+    vendor_code: Optional[str] = None
     date: date
     purchase_price: float
     delivery_to_warehouse: float
@@ -487,19 +488,21 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
     try:
         conn = psycopg2.connect(DB_URL)
         query = """
-                SELECT purchase_price, delivery_to_warehouse, wb_commission_rub,
-                       wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, date
+                SELECT "vendorCode", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging,
+                       fuel, gift, defect_percent, date
                 FROM sales
                 WHERE "vendorCode" = %s
                 ORDER BY date DESC
                 LIMIT 1
                 """
-        df = pd.read_sql_query(query, conn, params=(vendor_code,))
-        df.columns = df.columns.str.lower()
-        if df.empty:
-            raise HTTPException(status_code=404, detail="No data for vendor code")
-        row = df.iloc[0]
-        return LatestCostsResponse(**row.to_dict())
+       df = pd.read_sql_query(query, conn, params=(vendor_code,))
+       df.columns = df.columns.str.lower()
+        df = df.rename(columns={"vendorcode": "vendor_code"})
+       if df.empty:
+           raise HTTPException(status_code=404, detail="No data for vendor code")
+       row = df.iloc[0]
+       return LatestCostsResponse(**row.to_dict())
     finally:
         if conn:
             conn.close()
@@ -518,6 +521,7 @@ async def get_latest_costs_all():
                 """
         df = pd.read_sql_query(query, conn)
         df.columns = df.columns.str.lower()
+        df = df.rename(columns={"vendorcode": "vendor_code"})
         return df.to_dict(orient="records")
     finally:
         if conn:
@@ -530,6 +534,16 @@ class PurchaseBatchCreate(BaseModel):
     purchase_price: float = Field(..., gt=0, description="Закупочная цена за единицу")
     quantity_bought: int = Field(..., gt=0, description="Количество товаров в партии")
     start_date: date = Field(..., description="Дата, с которой партия считается активной (формат YYYY-MM-DD)")
+
+
+class PurchaseBatchResponse(BaseModel):
+    vendor_code: str
+    purchase_price: float
+    quantity_bought: int
+    quantity_sold: int
+    is_active: bool
+    start_date: date
+    end_date: Optional[date]
 
 
 # --- НОВЫЙ Эндпоинт для создания закупочной партии ---
@@ -580,6 +594,26 @@ async def create_purchase_batch(batch: PurchaseBatchCreate):
     finally:
         if cursor:
             cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/purchase_batches", response_model=List[PurchaseBatchResponse])
+async def get_purchase_batches(vendor_code: str = Query(..., description="Артикул товара")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT vendor_code, purchase_price, quantity_bought, quantity_sold,
+                       is_active, start_date, end_date
+                FROM purchase_batches
+                WHERE vendor_code = %s
+                ORDER BY start_date DESC
+                """
+        df = pd.read_sql_query(query, conn, params=(vendor_code,))
+        df.columns = df.columns.str.lower()
+        return df.to_dict(orient="records")
+    finally:
         if conn:
             conn.close()
 
