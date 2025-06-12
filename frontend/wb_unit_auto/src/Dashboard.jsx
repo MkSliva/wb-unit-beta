@@ -10,13 +10,16 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const Dashboard = ({ openEconomics }) => {
+const Dashboard = ({ openEconomics, openMissing }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalProfit, setTotalProfit] = useState(0);
   const [groupedSales, setGroupedSales] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [totalAdSpend, setTotalAdSpend] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [missingCosts, setMissingCosts] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedImt, setSelectedImt] = useState(null);
@@ -75,6 +78,8 @@ const Dashboard = ({ openEconomics }) => {
       const data = await response.json();
       setGroupedSales(data.data);
       setTotalProfit(data.total_profit);
+      setTotalAdSpend(data.total_ad_spend);
+      setTotalOrders(data.total_orders);
 
       const dailyResp = await fetch(
         `http://localhost:8000/api/sales_overall_daily?start_date=${startDate}&end_date=${endDate}`
@@ -84,6 +89,16 @@ const Dashboard = ({ openEconomics }) => {
         setOverallDaily(dailyData.data);
       } else {
         setOverallDaily([]);
+      }
+
+      const missingResp = await fetch(
+        `http://localhost:8000/api/missing_costs?start_date=${startDate}&end_date=${endDate}`
+      );
+      if (missingResp.ok) {
+        const m = await missingResp.json();
+        setMissingCosts(m);
+      } else {
+        setMissingCosts([]);
       }
     } catch (err) {
       console.error("Error fetching grouped sales:", err);
@@ -450,7 +465,7 @@ const Dashboard = ({ openEconomics }) => {
 
       {error && <div className="text-red-600 mb-4">{error}</div>}
 
-      <div className="mb-4">
+      <div className="mb-4 space-y-1">
         <h2 className="text-xl font-semibold">
           Общая прибыль:{" "}
           <span
@@ -459,6 +474,8 @@ const Dashboard = ({ openEconomics }) => {
             {totalProfit.toFixed(2)} руб.
           </span>
         </h2>
+        <div>Реклама: {totalAdSpend.toFixed(2)} руб.</div>
+        <div>Заказов: {totalOrders}</div>
       </div>
 
       <div className="mb-6">
@@ -503,6 +520,23 @@ const Dashboard = ({ openEconomics }) => {
           <p className="text-gray-600">Нет данных для графика.</p>
         )}
       </div>
+
+      {missingCosts.length > 0 && (
+        <div className="bg-red-200 text-red-800 p-4 mb-4">
+          <p>
+            Внимание! У некоторых заказанных товаров не заполнена закупочная
+            цена! Данные сайта могут быть неточными!
+          </p>
+          <button
+            onClick={() =>
+              openMissing({ start: startDate, end: endDate })
+            }
+            className="underline mt-2"
+          >
+            Посмотреть
+          </button>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 shadow-md rounded-lg">

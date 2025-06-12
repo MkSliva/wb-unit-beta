@@ -231,11 +231,15 @@ def get_sales_grouped_detailed_range(
         )
         grouped = grouped.drop(columns=["investment_total"])
         total_profit = round(grouped["total_profit"].sum(), 2)
+        total_orders = int(df["orderscount"].sum())
+        total_ad_spend = round(df["ad_spend"].sum(), 2)
 
         return {
             "start_date": start_date,
             "end_date": end_date,
             "total_profit": total_profit,
+            "total_orders": total_orders,
+            "total_ad_spend": total_ad_spend,
             "data": grouped.to_dict(orient="records")
         }
     finally:
@@ -465,6 +469,11 @@ class LatestCostsResponse(BaseModel):
     defect_percent: float
 
 
+class MissingCostEntry(BaseModel):
+    vendor_code: str
+    dates: List[date]
+
+
 # --- НОВЫЙ Эндпоинт для получения ежедневной истории закупочных цен ---
 @app.get("/api/purchase_price_history_daily", response_model=List[PurchasePriceHistoryDailyResponse])
 async def get_purchase_price_history_daily(
@@ -583,6 +592,42 @@ async def get_latest_costs_all():
         df.columns = df.columns.str.lower()
         df = df.rename(columns={"vendorcode": "vendor_code"})
         return df.to_dict(orient="records")
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/missing_costs", response_model=List[MissingCostEntry])
+def get_missing_costs(
+        start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+        end_date: str = Query(..., description="End date YYYY-MM-DD")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT "vendorCode", date
+                FROM sales
+                WHERE date BETWEEN %s AND %s
+                  AND (
+                        purchase_price IS NULL OR purchase_price = 0 OR
+                        delivery_to_warehouse IS NULL OR delivery_to_warehouse = 0 OR
+                        wb_commission_rub IS NULL OR wb_commission_rub = 0 OR
+                        wb_logistics IS NULL OR wb_logistics = 0 OR
+                        tax_rub IS NULL OR tax_rub = 0 OR
+                        packaging IS NULL OR packaging = 0 OR
+                        fuel IS NULL OR fuel = 0 OR
+                        gift IS NULL OR gift = 0
+                      )
+                ORDER BY "vendorCode", date
+                """
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        if df.empty:
+            return []
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"]).dt.date
+        grouped = df.groupby("vendorcode")['date'].apply(lambda x: sorted(x.unique())).reset_index(name='dates')
+        grouped = grouped.rename(columns={'vendorcode': 'vendor_code'})
+        return grouped.to_dict(orient='records')
     finally:
         if conn:
             conn.close()
@@ -835,3 +880,4 @@ async def check_purchase_batches():
             cursor.close()
         if conn:
             conn.close()
+
