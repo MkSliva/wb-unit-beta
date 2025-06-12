@@ -29,6 +29,7 @@ const Dashboard = ({ openEconomics }) => {
 
   const [latestCosts, setLatestCosts] = useState({});
   const [hoveredVendor, setHoveredVendor] = useState(null);
+  const [purchaseBatches, setPurchaseBatches] = useState({});
 
   // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
@@ -133,6 +134,11 @@ const Dashboard = ({ openEconomics }) => {
         const detailsData = await detailsResponse.json();
         setGroupDetails(detailsData.data);
 
+        const batchPromises = detailsData.data.map((item) =>
+          fetchPurchaseBatches(item.vendorcode)
+        );
+        await Promise.all(batchPromises);
+
         // Получение данных для ежедневных графиков (прибыль, заказы, реклама)
         const dailyResponse = await fetch(
           `http://localhost:8000/api/sales_by_imt_daily?imt_id=${imtId}&start_date=${startDate}&end_date=${endDate}`
@@ -212,6 +218,7 @@ const Dashboard = ({ openEconomics }) => {
     setGroupDetails([]);
     setDailySales([]);
     setPurchasePriceHistory([]);
+    setPurchaseBatches({});
     setEditData({});
     setError(null);
   };
@@ -353,6 +360,20 @@ const Dashboard = ({ openEconomics }) => {
       }
     } catch (error) {
       console.error("Error fetching latest costs:", error);
+    }
+  };
+
+  const fetchPurchaseBatches = async (vendorCode) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/purchase_batches?vendor_code=${vendorCode}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setPurchaseBatches((prev) => ({ ...prev, [vendorCode]: data }));
+      }
+    } catch (error) {
+      console.error("Error fetching purchase batches:", error);
     }
   };
 
@@ -825,12 +846,46 @@ const Dashboard = ({ openEconomics }) => {
                       />
                     </label>
                   </div>
-                  <button
+                <button
                     onClick={submitCostUpdate}
                     className="mt-4 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
                   >
                     Обновить расходы для артикула
                   </button>
+                </div>
+
+                {/* --- Закупочные партии --- */}
+                <div className="mt-6">
+                  <h4 className="text-lg font-semibold mb-2">История закупочных партий</h4>
+                  {Object.keys(purchaseBatches).map((vc) => (
+                    <div key={vc} className="mb-4">
+                      <h5 className="font-medium mb-1">Артикул {vc}</h5>
+                      <table className="min-w-full divide-y divide-gray-200 border">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Начало</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Конец</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Цена</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Кол-во</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Продано</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {purchaseBatches[vc]?.map((b) => (
+                            <tr key={b.start_date} className={b.is_active ? 'bg-green-50' : ''}>
+                              <td className="px-2 py-1 text-sm">{b.start_date}</td>
+                              <td className="px-2 py-1 text-sm">{b.end_date || '-'}</td>
+                              <td className="px-2 py-1 text-sm">{b.purchase_price}</td>
+                              <td className="px-2 py-1 text-sm">{b.quantity_bought}</td>
+                              <td className="px-2 py-1 text-sm">{b.quantity_sold}</td>
+                              <td className="px-2 py-1 text-sm">{b.is_active ? 'активна' : 'закрыта'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
                 </div>
 
                 {/* --- ГРАФИКИ --- */}
