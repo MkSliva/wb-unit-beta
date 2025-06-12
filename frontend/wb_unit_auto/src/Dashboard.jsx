@@ -27,6 +27,7 @@ const Dashboard = ({ openEconomics }) => {
   // *** НОВЫЕ СОСТОЯНИЯ ДЛЯ ДАННЫХ ГРАФИКОВ ***
   const [purchasePriceHistory, setPurchasePriceHistory] = useState([]);
 
+  const [overallDaily, setOverallDaily] = useState([]);
   const [latestCosts, setLatestCosts] = useState({});
   const [hoveredVendor, setHoveredVendor] = useState(null);
   const [purchaseBatches, setPurchaseBatches] = useState({});
@@ -74,6 +75,16 @@ const Dashboard = ({ openEconomics }) => {
       const data = await response.json();
       setGroupedSales(data.data);
       setTotalProfit(data.total_profit);
+
+      const dailyResp = await fetch(
+        `http://localhost:8000/api/sales_overall_daily?start_date=${startDate}&end_date=${endDate}`
+      );
+      if (dailyResp.ok) {
+        const dailyData = await dailyResp.json();
+        setOverallDaily(dailyData.data);
+      } else {
+        setOverallDaily([]);
+      }
     } catch (err) {
       console.error("Error fetching grouped sales:", err);
       setError("Не удалось загрузить данные о продажах. " + err.message);
@@ -448,6 +459,49 @@ const Dashboard = ({ openEconomics }) => {
             {totalProfit.toFixed(2)} руб.
           </span>
         </h2>
+      </div>
+
+      <div className="mb-6">
+        {overallDaily.length > 0 ? (
+          <div style={{ width: "100%", height: 300 }}>
+            <ResponsiveContainer>
+              <LineChart
+                data={overallDaily}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis yAxisId="left" orientation="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip />
+                <Legend />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="orderscount"
+                  stroke="#82ca9d"
+                  name="Заказы"
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="total_profit"
+                  stroke="#8884d8"
+                  name="Прибыль"
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="ad_spend"
+                  stroke="#ffc658"
+                  name="Реклама"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="text-gray-600">Нет данных для графика.</p>
+        )}
       </div>
 
       <div className="overflow-x-auto">

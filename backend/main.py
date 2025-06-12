@@ -385,6 +385,66 @@ def get_sales_by_imt_daily(
             conn.close()
 
 
+@app.get("/api/sales_overall_daily")
+def get_sales_overall_daily(
+        start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
+        end_date: str = Query(..., description="End date в формате YYYY-MM-DD")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+
+        query = """
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price",
+                       "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub",
+                       "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price",
+                       "vendorCode"
+                FROM sales
+                WHERE date BETWEEN %s
+                  AND %s
+                ORDER BY date ASC
+                """
+
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"])
+
+        if df.empty:
+            return {
+                "message": f"No data between {start_date} and {end_date}",
+                "data": []
+            }
+
+        df = df.fillna(0)
+
+        df = update_sales_purchase_prices(df, conn)
+
+        df["cost_price"] = (
+                df["purchase_price"] + df["delivery_to_warehouse"] + df["wb_commission_rub"] +
+                df["wb_logistics"] + df["tax_rub"] + df["packaging"] +
+                df["fuel"] + df["gift"] + df["defect_percent"]
+        )
+        df["orderscount"] = df["orderscount"].astype(int)
+        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+
+        grouped = df.groupby("date").agg({
+            "orderscount": "sum",
+            "ad_spend": "sum",
+            "profit": "sum"
+        }).reset_index()
+
+        grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped["date"] = grouped["date"].dt.strftime("%Y-%m-%d")
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "data": grouped.to_dict(orient="records")
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
 # --- НОВАЯ Pydantic модель для ответа истории закупочных цен по дням ---
 class PurchasePriceHistoryDailyResponse(BaseModel):
     date: date
