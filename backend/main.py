@@ -607,7 +607,12 @@ def get_missing_costs(
         query = """
                 SELECT "vendorCode", date
                 FROM sales
-                WHERE date BETWEEN %s AND %s
+                WHERE "vendorCode" IN (
+                        SELECT DISTINCT "vendorCode"
+                        FROM sales
+                        WHERE COALESCE("ordersCount", 0) > 0
+                )
+                  AND date BETWEEN %s AND %s
                   AND (
                         purchase_price IS NULL OR purchase_price = 0 OR
                         delivery_to_warehouse IS NULL OR delivery_to_warehouse = 0 OR
