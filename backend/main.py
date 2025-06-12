@@ -733,6 +733,7 @@ async def get_purchase_batches(vendor_code: str = Query(..., description="Арт
 class CostUpdate(BaseModel):
     vendorcode: str
     start_date: date  # Дата, начиная с которой обновляются расходы
+    end_date: Optional[date] = None  # Дата, до которой применять обновление
     purchase_price: Optional[float] = None  # Теперь опционально, т.к. может быть задано через партии
     delivery_to_warehouse: Optional[float] = None
     wb_commission_rub: Optional[float] = None
@@ -783,12 +784,15 @@ def update_costs(update: CostUpdate):
         if fields_to_update_sales:
             # Обновляем таблицу sales
             query_sales_update = f"UPDATE sales SET {', '.join(fields_to_update_sales)} WHERE \"vendorCode\" = %s AND date >= %s"
-            cursor.execute(query_sales_update,
-                           values_to_update_sales + [update.vendorcode, update.start_date.strftime('%Y-%m-%d')])
+            params = [update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+            if update.end_date:
+                query_sales_update += " AND date <= %s"
+                params.append(update.end_date.strftime('%Y-%m-%d'))
+            cursor.execute(query_sales_update, values_to_update_sales + params)
             updated_rows_sales = cursor.rowcount
 
             # Пересчитываем cost_price и total_profit в таблице sales
-            cursor.execute(
+            query_recalc = (
                 """
                 UPDATE sales
                 SET "cost_price"   = COALESCE("purchase_price", 0) + COALESCE("delivery_to_warehouse", 0) +
@@ -802,10 +806,13 @@ def update_costs(update: CostUpdate):
                         COALESCE("fuel", 0) + COALESCE("gift", 0) + COALESCE("defect_percent", 0)
                         )) * COALESCE("ordersCount", 0) - COALESCE("ad_spend", 0)
                 WHERE "vendorCode" = %s
-                  AND date >= %s
-                """,
-                (update.vendorcode, update.start_date.strftime('%Y-%m-%d')),
+                  AND date >= %s"""
             )
+            params_recalc = [update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+            if update.end_date:
+                query_recalc += " AND date <= %s"
+                params_recalc.append(update.end_date.strftime('%Y-%m-%d'))
+            cursor.execute(query_recalc, params_recalc)
 
             # Обновляем базовую таблицу cards для будущих расчётов и согласованности
             if fields_to_update_cards:

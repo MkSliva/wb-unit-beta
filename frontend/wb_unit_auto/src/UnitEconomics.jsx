@@ -33,16 +33,25 @@ const UnitEconomics = ({ goBack }) => {
 
   const saveRow = async (vendor) => {
     const row = editRows[vendor] || {};
-    const payload = { vendorcode: vendor, start_date: row.start_date || new Date().toISOString().split("T")[0] };
+    const payload = {
+      vendorcode: vendor,
+      start_date: row.start_date || new Date().toISOString().split("T")[0],
+    };
+    if (row.end_date) {
+      payload.end_date = row.end_date;
+    }
     fields.forEach((f) => {
       if (row[f] !== undefined) payload[f] = parseFloat(row[f]);
     });
     try {
-      await fetch("http://localhost:8000/api/update_costs", {
+      const resp = await fetch("http://localhost:8000/api/update_costs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (resp.ok) {
+        alert("Закупочная цена обновлена");
+      }
     } catch (e) {
       console.error("Failed to save", e);
     }
@@ -106,6 +115,12 @@ const UnitEconomics = ({ goBack }) => {
                     value={editRows[item.vendor_code]?.start_date || ""}
                     onChange={(e) => handleChange(item.vendor_code, "start_date", e.target.value)}
                     className="border p-1 rounded"
+                  />
+                  <input
+                    type="date"
+                    value={editRows[item.vendor_code]?.end_date || ""}
+                    onChange={(e) => handleChange(item.vendor_code, "end_date", e.target.value)}
+                    className="border p-1 rounded ml-2"
                   />
                   <button
                     onClick={() => saveRow(item.vendor_code)}
