@@ -27,6 +27,9 @@ const Dashboard = () => {
   // *** НОВЫЕ СОСТОЯНИЯ ДЛЯ ДАННЫХ ГРАФИКОВ ***
   const [purchasePriceHistory, setPurchasePriceHistory] = useState([]);
 
+  const [latestCosts, setLatestCosts] = useState({});
+  const [hoveredVendor, setHoveredVendor] = useState(null);
+
   // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
 
@@ -339,6 +342,20 @@ const Dashboard = () => {
     }
   };
 
+  const fetchLatestCost = async (vendorCode) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/latest_costs?vendor_code=${vendorCode}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setLatestCosts((prev) => ({ ...prev, [vendorCode]: data }));
+      }
+    } catch (error) {
+      console.error("Error fetching latest costs:", error);
+    }
+  };
+
   // Вспомогательная функция для получения индикатора сортировки
   const getSortIndicator = (key) => {
     if (sortConfig.key === key) {
@@ -411,7 +428,7 @@ const Dashboard = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 IMT ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[200px]">
                 Артикулы
               </th>
               <th
@@ -432,6 +449,12 @@ const Dashboard = () => {
               >
                 Прибыль {getSortIndicator("total_profit")}
               </th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("margin_percent")}
+              >
+                Маржа % {getSortIndicator("margin_percent")}
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Действия
               </th>
@@ -443,7 +466,10 @@ const Dashboard = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {group.imtid}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td
+                  className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[200px] truncate"
+                  title={group.vendorcodes}
+                >
                   {group.vendorcodes}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -458,6 +484,9 @@ const Dashboard = () => {
                   }`}
                 >
                   {group.total_profit.toFixed(2)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.margin_percent ? group.margin_percent.toFixed(2) + " %" : "-"}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
@@ -590,8 +619,29 @@ const Dashboard = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {groupDetails.map((detail) => (
                         <tr key={detail.vendorcode}>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td
+                            className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 relative"
+                            onMouseEnter={() => {
+                              setHoveredVendor(detail.vendorcode);
+                              if (!latestCosts[detail.vendorcode]) {
+                                fetchLatestCost(detail.vendorcode);
+                              }
+                            }}
+                            onMouseLeave={() => setHoveredVendor(null)}
+                          >
                             {detail.vendorcode}
+                            {hoveredVendor === detail.vendorcode && latestCosts[detail.vendorcode] && (
+                              <div className="absolute left-0 top-full mt-1 p-2 bg-white border rounded shadow-lg text-xs z-10">
+                                <div>Закупка: {latestCosts[detail.vendorcode].purchase_price}</div>
+                                <div>Доставка: {latestCosts[detail.vendorcode].delivery_to_warehouse}</div>
+                                <div>Комиссия: {latestCosts[detail.vendorcode].wb_commission_rub}</div>
+                                <div>Логистика: {latestCosts[detail.vendorcode].wb_logistics}</div>
+                                <div>Налог: {latestCosts[detail.vendorcode].tax_rub}</div>
+                                <div>Упаковка: {latestCosts[detail.vendorcode].packaging}</div>
+                                <div>Топливо: {latestCosts[detail.vendorcode].fuel}</div>
+                                <div>Подарок: {latestCosts[detail.vendorcode].gift}</div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                             {detail.orderscount}

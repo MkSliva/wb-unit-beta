@@ -198,10 +198,16 @@ def get_sales_grouped_detailed_range(
         df["orderscount"] = df["orderscount"].astype(int)
         df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
 
+        df["investment_total"] = (
+                df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] +
+                df["fuel"] + df["gift"]
+        ) * df["orderscount"]
+
         grouped = df.groupby("imtid").agg({
             "orderscount": "sum",
             "ad_spend": "sum",
-            "profit": "sum"
+            "profit": "sum",
+            "investment_total": "sum"
         }).reset_index()
 
         max_sales_per_vendorcode = df.loc[df.groupby('imtid')['orderscount'].idxmax()]
@@ -218,6 +224,12 @@ def get_sales_grouped_detailed_range(
         )
 
         grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped["margin_percent"] = grouped.apply(
+            lambda row: (row["total_profit"] / row["investment_total"] * 100)
+            if row["investment_total"] != 0 else 0,
+            axis=1,
+        )
+        grouped = grouped.drop(columns=["investment_total"])
         total_profit = round(grouped["total_profit"].sum(), 2)
 
         return {
@@ -379,6 +391,19 @@ class PurchasePriceHistoryDailyResponse(BaseModel):
     purchase_price: float
 
 
+class LatestCostsResponse(BaseModel):
+    date: date
+    purchase_price: float
+    delivery_to_warehouse: float
+    wb_commission_rub: float
+    wb_logistics: float
+    tax_rub: float
+    packaging: float
+    fuel: float
+    gift: float
+    defect_percent: float
+
+
 # --- НОВЫЙ Эндпоинт для получения ежедневной истории закупочных цен ---
 @app.get("/api/purchase_price_history_daily", response_model=List[PurchasePriceHistoryDailyResponse])
 async def get_purchase_price_history_daily(
@@ -454,6 +479,30 @@ async def get_purchase_price_history_daily(
             conn.close()
         if cursor:
             cursor.close()
+
+
+@app.get("/api/latest_costs", response_model=LatestCostsResponse)
+async def get_latest_costs(vendor_code: str = Query(..., description="Vendor code")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT purchase_price, delivery_to_warehouse, wb_commission_rub,
+                       wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, date
+                FROM sales
+                WHERE "vendorCode" = %s
+                ORDER BY date DESC
+                LIMIT 1
+                """
+        df = pd.read_sql_query(query, conn, params=(vendor_code,))
+        df.columns = df.columns.str.lower()
+        if df.empty:
+            raise HTTPException(status_code=404, detail="No data for vendor code")
+        row = df.iloc[0]
+        return LatestCostsResponse(**row.to_dict())
+    finally:
+        if conn:
+            conn.close()
 
 
 # --- НОВАЯ Pydantic модель для создания закупочной партии ---
