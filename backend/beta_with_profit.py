@@ -356,11 +356,11 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
     # 📦 Получение справочной информации из самой свежей записи таблицы sales
     cursor.execute(
         """
-        SELECT DISTINCT ON (nm_id) nm_id, brand, "subjectName", purchase_price,
+        SELECT DISTINCT ON ("nm_ID") "nm_ID", brand, "subjectName", purchase_price,
                delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
                defect_percent
         FROM sales
-        ORDER BY nm_id, date DESC
+        ORDER BY "nm_ID", "date" DESC
         """
     )
     card_details_raw = cursor.fetchall()
