@@ -496,13 +496,13 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
                 ORDER BY date DESC
                 LIMIT 1
                 """
-       df = pd.read_sql_query(query, conn, params=(vendor_code,))
-       df.columns = df.columns.str.lower()
+        df = pd.read_sql_query(query, conn, params=(vendor_code,))
+        df.columns = df.columns.str.lower()
         df = df.rename(columns={"vendorcode": "vendor_code"})
-       if df.empty:
-           raise HTTPException(status_code=404, detail="No data for vendor code")
-       row = df.iloc[0]
-       return LatestCostsResponse(**row.to_dict())
+        if df.empty:
+            raise HTTPException(status_code=404, detail="No data for vendor code")
+        row = df.iloc[0]
+        return LatestCostsResponse(**row.to_dict())
     finally:
         if conn:
             conn.close()
