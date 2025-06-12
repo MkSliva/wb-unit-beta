@@ -353,11 +353,16 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                    """)
     conn.commit()
 
-    # 📦 Получение справочной информации из таблицы cards
-    # Теперь мы НЕ получаем wb_commission_rub, tax_rub, cost_price, profit_per_item, commission_percent из cards,
-    # так как они будут пересчитаны.
+    # 📦 Получение справочной информации из самой свежей записи таблицы sales
     cursor.execute(
-        "SELECT nm_id, brand, subject_name, purchase_price, delivery_to_warehouse, wb_logistics, packaging, fuel, gift, defect_percent FROM cards")
+        """
+        SELECT DISTINCT ON (nm_id) nm_id, brand, "subjectName", purchase_price,
+               delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
+               defect_percent
+        FROM sales
+        ORDER BY nm_id, date DESC
+        """
+    )
     card_details_raw = cursor.fetchall()
     card_details = {
         row[0]: {
@@ -801,3 +806,4 @@ if __name__ == "__main__":
     asyncio.run(main())
     calculate_total_profit_for_day()
     calculate_profit_by_bundles()
+

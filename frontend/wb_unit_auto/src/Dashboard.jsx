@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const Dashboard = () => {
+const Dashboard = ({ openEconomics }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalProfit, setTotalProfit] = useState(0);
@@ -366,7 +366,15 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">WB Аналитика Продаж</h1>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">WB Аналитика Продаж</h1>
+        <button
+          onClick={openEconomics}
+          className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+        >
+          Данные Юнит Экономики
+        </button>
+      </div>
 
       <div className="flex space-x-4 mb-4">
         <div>
