@@ -1,9 +1,16 @@
-import Dashboard from './Dashboard';
+import React, { useState } from "react";
+import Dashboard from "./Dashboard";
+import UnitEconomics from "./UnitEconomics";
 
 function App() {
+  const [page, setPage] = useState("dashboard");
   return (
     <div>
-      <Dashboard />
+      {page === "dashboard" ? (
+        <Dashboard openEconomics={() => setPage("economics")} />
+      ) : (
+        <UnitEconomics goBack={() => setPage("dashboard")} />
+      )}
     </div>
   );
 }

@@ -505,6 +505,25 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
             conn.close()
 
 
+@app.get("/api/latest_costs_all", response_model=List[LatestCostsResponse])
+async def get_latest_costs_all():
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT DISTINCT ON ("vendorCode") "vendorCode", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, date
+                FROM sales
+                ORDER BY "vendorCode", date DESC
+                """
+        df = pd.read_sql_query(query, conn)
+        df.columns = df.columns.str.lower()
+        return df.to_dict(orient="records")
+    finally:
+        if conn:
+            conn.close()
+
+
 # --- НОВАЯ Pydantic модель для создания закупочной партии ---
 class PurchaseBatchCreate(BaseModel):
     vendor_code: str = Field(..., description="Артикул товара")
