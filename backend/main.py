@@ -1029,6 +1029,21 @@ def get_manager_info(imt_id: int = Query(..., description="IMT ID")):
             conn.close()
 
 
+@app.get("/api/ad_managers")
+def get_ad_managers():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT ad_manager_name FROM sales "
+        "WHERE ad_manager_name IS NOT NULL AND ad_manager_name <> '0' "
+        "ORDER BY ad_manager_name"
+    )
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
 # --- Модель для обновления других затрат (purchase_price теперь опционален) ---
 class CostUpdate(BaseModel):
     vendorcode: str

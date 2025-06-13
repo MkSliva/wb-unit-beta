@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 const filterTypes = [
   { value: "ad_manager_name", label: "Менеджер" },
@@ -14,6 +14,19 @@ const CardComparison = ({ goBack }) => {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [results, setResults] = useState([]);
+  const [managerOpts, setManagerOpts] = useState([]);
+  const [changeOpts, setChangeOpts] = useState([]);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/ad_managers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setManagerOpts)
+      .catch(() => {});
+    fetch("http://localhost:8000/api/card_change_options")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setChangeOpts)
+      .catch(() => {});
+  }, []);
 
   const addGroup = () => {
     setGroups((p) => [...p, { type: "ad_manager_name", value: "" }]);
@@ -54,17 +67,45 @@ const CardComparison = ({ goBack }) => {
       </div>
       {groups.map((g, idx) => (
         <div key={idx} className="mb-2 flex space-x-2 items-center">
-          <select value={g.type} onChange={(e) => handleChange(idx, "type", e.target.value)} className="border p-1">
+          <select
+            value={g.type}
+            onChange={(e) => handleChange(idx, "type", e.target.value)}
+            className="border p-1"
+          >
             {filterTypes.map((ft) => (
-              <option key={ft.value} value={ft.value}>{ft.label}</option>
+              <option key={ft.value} value={ft.value}>
+                {ft.label}
+              </option>
             ))}
           </select>
-          <input
-            type="text"
-            value={g.value}
-            onChange={(e) => handleChange(idx, "value", e.target.value)}
-            className="border p-1"
-          />
+          {g.type === "ad_manager_name" || g.type === "card_changes" ? (
+            <select
+              value={g.value}
+              onChange={(e) => handleChange(idx, "value", e.target.value)}
+              className="border p-1"
+            >
+              <option value="">Выберите</option>
+              {g.type === "ad_manager_name" &&
+                managerOpts.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              {g.type === "card_changes" &&
+                changeOpts.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={g.value}
+              onChange={(e) => handleChange(idx, "value", e.target.value)}
+              className="border p-1"
+            />
+          )}
         </div>
       ))}
       <button onClick={addGroup} className="mt-2 px-2 py-1 bg-gray-200 rounded">+ Добавить группу</button>
