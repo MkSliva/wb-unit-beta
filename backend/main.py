@@ -390,6 +390,10 @@ def get_sales_filtered_range(
         + df["fuel"]
         + df["gift"]
     ) * df["orderscount"]
+    add_to_cart_conv = round(df["addtocartconversion"].mean(), 2)
+    cart_to_order_conv = round(df["carttoorderconversion"].mean(), 2)
+    ad_ctr = round(df["ad_ctr"].mean(), 2)
+    ad_cpc = round(df["ad_cpc"].mean(), 2)
     grouped = (
         df.groupby("imtid")
         .agg({"orderscount": "sum", "ad_spend": "sum", "profit": "sum", "investment": "sum"})
@@ -405,6 +409,10 @@ def get_sales_filtered_range(
         "total_profit": total_profit,
         "total_ad_spend": total_ad_spend,
         "margin_percent": margin_percent,
+        "add_to_cart_conv": add_to_cart_conv,
+        "cart_to_order_conv": cart_to_order_conv,
+        "ad_ctr": ad_ctr,
+        "ad_cpc": ad_cpc,
     }
 
 
