@@ -483,22 +483,22 @@ const Dashboard = ({ openEconomics, openMissing }) => {
       </div>
 
       {error && <div className="text-red-600 mb-4">{error}</div>}
-
-      <div className="mb-4 space-y-1">
-        <h2 className="text-xl font-semibold">
-          Общая прибыль:{" "}
-          <span
-            className={`${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}
-          >
-            {totalProfit.toFixed(2)} руб.
-          </span>
-        </h2>
-        <div>Реклама: {totalAdSpend.toFixed(2)} руб.</div>
-        <div>Заказов: {totalOrders}</div>
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Общая прибыль</div>
+          <div className={`text-xl font-semibold ${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>{totalProfit.toFixed(2)} руб.</div>
+        </div>
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Реклама</div>
+          <div className="text-xl font-semibold">{totalAdSpend.toFixed(2)} руб.</div>
+        </div>
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Заказы</div>
+          <div className="text-xl font-semibold">{totalOrders}</div>
+        </div>
       </div>
 
       <div className="mb-6">
-        {overallDaily.length > 0 ? (
           <div style={{ width: "100%", height: 300 }}>
             <ResponsiveContainer>
               <LineChart
@@ -585,6 +585,14 @@ const Dashboard = ({ openEconomics, openMissing }) => {
               >
                 Прибыль {getSortIndicator("total_profit")}
               </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("revenue_percent")}>
+                  Доля выручки % {getSortIndicator("revenue_percent")}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("profit_percent")}>
+                  Доля прибыли % {getSortIndicator("profit_percent")}
+                </th>
               <th
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 onClick={() => requestSort("margin_percent")}
@@ -620,6 +628,12 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                   }`}
                 >
                   {group.total_profit.toFixed(2)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.revenue_percent ? group.revenue_percent.toFixed(2) + " %" : "-"}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.profit_percent ? group.profit_percent.toFixed(2) + " %" : "-"}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {group.margin_percent ? group.margin_percent.toFixed(2) + " %" : "-"}

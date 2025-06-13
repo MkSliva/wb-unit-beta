@@ -220,6 +220,8 @@ def get_sales_grouped_detailed_range(
         df["orderscount"] = df["orderscount"].astype(int)
         df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
 
+        df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
+
         df["investment_total"] = (
                 df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] +
                 df["fuel"] + df["gift"]
@@ -229,6 +231,7 @@ def get_sales_grouped_detailed_range(
             "orderscount": "sum",
             "ad_spend": "sum",
             "profit": "sum",
+            "revenue": "sum",
             "investment_total": "sum"
         }).reset_index()
 
@@ -245,13 +248,17 @@ def get_sales_grouped_detailed_range(
             lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
         )
 
+        total_revenue = grouped["revenue"].sum()
+        total_profit_sum = grouped["profit"].sum()
         grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped["revenue_percent"] = grouped["revenue"] / total_revenue * 100 if total_revenue != 0 else 0
+        grouped["profit_percent"] = grouped["total_profit"] / total_profit_sum * 100 if total_profit_sum != 0 else 0
         grouped["margin_percent"] = grouped.apply(
             lambda row: (row["total_profit"] / row["investment_total"] * 100)
             if row["investment_total"] != 0 else 0,
             axis=1,
         )
-        grouped = grouped.drop(columns=["investment_total"])
+        grouped = grouped.drop(columns=["investment_total", "revenue"])
         total_profit = round(grouped["total_profit"].sum(), 2)
         total_orders = int(df["orderscount"].sum())
         total_ad_spend = round(df["ad_spend"].sum(), 2)
