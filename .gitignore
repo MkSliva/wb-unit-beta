@@ -1,5 +1,7 @@
 .idea
 node_modules/
 dist/
+package-lock.json
+frontend/wb_unit_auto/package-lock.json
 *.env
 *.db
