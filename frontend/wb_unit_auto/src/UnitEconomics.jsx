@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const fields = [
   "purchase_price",
@@ -10,38 +10,76 @@ const fields = [
   "fuel",
   "gift",
   "real_defect_percent",
+  "defect_percent",
 ];
 
 const UnitEconomics = ({ goBack }) => {
+  const tableRef = useRef(null);
+  const table = useRef(null);
   const [data, setData] = useState([]);
   const [filterMissing, setFilterMissing] = useState(false);
-  const [editRows, setEditRows] = useState({});
 
   useEffect(() => {
     fetch("http://localhost:8000/api/latest_costs_all")
       .then((r) => r.json())
-      .then((d) => setData(d))
+      .then((d) => setData(d.map((row) => ({ ...row, start_date: "", end_date: "" }))))
       .catch((err) => console.error("Failed to fetch costs", err));
   }, []);
 
-  const handleChange = (vendor, field, value) => {
-    setEditRows((prev) => ({
-      ...prev,
-      [vendor]: { ...prev[vendor], [field]: value },
-    }));
-  };
+  useEffect(() => {
+    if (!tableRef.current) return;
+    const filtered = filterMissing
+      ? data.filter((item) =>
+          fields.some((f) => !item[f] || item[f] === 0)
+        )
+      : data;
 
-  const saveRow = async (vendor) => {
-    const row = editRows[vendor] || {};
+    if (table.current) {
+      table.current.setData(filtered);
+      return;
+    }
+
+    table.current = new Tabulator(tableRef.current, {
+      data: filtered,
+      layout: "fitColumns",
+      height: "500px",
+      columns: [
+        { title: "Артикул", field: "vendor_code", headerFilter: "input", width: 120 },
+        { title: "profit_per_item", field: "profit_per_item", sorter: "number" },
+        ...fields.map((f) => ({ title: f, field: f, editor: "input", sorter: "number" })),
+        {
+          title: "Дата начала",
+          field: "start_date",
+          editor: "input",
+          editorParams: { elementAttributes: { type: "date" } },
+        },
+        {
+          title: "Дата конца",
+          field: "end_date",
+          editor: "input",
+          editorParams: { elementAttributes: { type: "date" } },
+        },
+        {
+          formatter: "button",
+          title: "",
+          width: 120,
+          formatterParams: { label: "Сохранить" },
+          cellClick: (e, cell) => saveRow(cell.getRow().getData()),
+        },
+      ],
+    });
+  }, [data, filterMissing]);
+
+  const saveRow = async (row) => {
     const payload = {
-      vendorcode: vendor,
+      vendorcode: row.vendor_code,
       start_date: row.start_date || new Date().toISOString().split("T")[0],
     };
-    if (row.end_date) {
-      payload.end_date = row.end_date;
-    }
+    if (row.end_date) payload.end_date = row.end_date;
     fields.forEach((f) => {
-      if (row[f] !== undefined) payload[f] = parseFloat(row[f]);
+      if (row[f] !== undefined && row[f] !== null && row[f] !== "") {
+        payload[f] = parseFloat(row[f]);
+      }
     });
     try {
       const resp = await fetch("http://localhost:8000/api/update_costs", {
@@ -56,11 +94,6 @@ const UnitEconomics = ({ goBack }) => {
       console.error("Failed to save", e);
     }
   };
-
-  const displayed = data.filter((item) => {
-    if (!filterMissing) return true;
-    return fields.some((f) => !item[f] || item[f] === 0);
-  });
 
   return (
     <div className="container mx-auto p-4">
@@ -82,61 +115,9 @@ const UnitEconomics = ({ goBack }) => {
         />
         Показать только незаполненные
       </label>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 border">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left">Артикул</th>
-              {fields.map((f) => (
-                <th key={f} className="px-4 py-2 text-left">{f}</th>
-              ))}
-              <th className="px-4 py-2" />
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {displayed.map((item) => (
-              <tr key={item.vendor_code}>
-                <td className="px-4 py-2 text-sm font-medium">{item.vendor_code}</td>
-                {fields.map((f) => (
-                  <td key={f} className="px-4 py-2">
-                    <input
-                      type="number"
-                      value={
-                        editRows[item.vendor_code]?.[f] ?? item[f] ?? ""
-                      }
-                      onChange={(e) => handleChange(item.vendor_code, f, e.target.value)}
-                      className="border p-1 rounded w-24"
-                    />
-                  </td>
-                ))}
-                <td className="px-4 py-2">
-                  <input
-                    type="date"
-                    value={editRows[item.vendor_code]?.start_date || ""}
-                    onChange={(e) => handleChange(item.vendor_code, "start_date", e.target.value)}
-                    className="border p-1 rounded"
-                  />
-                  <input
-                    type="date"
-                    value={editRows[item.vendor_code]?.end_date || ""}
-                    onChange={(e) => handleChange(item.vendor_code, "end_date", e.target.value)}
-                    className="border p-1 rounded ml-2"
-                  />
-                  <button
-                    onClick={() => saveRow(item.vendor_code)}
-                    className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
-                  >
-                    Сохранить
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div ref={tableRef} className="overflow-x-auto" />
     </div>
   );
 };
 
 export default UnitEconomics;
-

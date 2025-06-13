@@ -527,6 +527,7 @@ class LatestCostsResponse(BaseModel):
     defect_percent: float
     real_defect_percent: float
     ad_manager_name: Optional[str] = None
+    profit_per_item: Optional[float] = None
 
 
 class MissingCostEntry(BaseModel):
@@ -631,6 +632,18 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
         df = df.rename(columns={"vendorcode": "vendor_code"})
         if df.empty:
             raise HTTPException(status_code=404, detail="No data for vendor code")
+        df["profit_per_item"] = (
+            df["real_defect_percent"]
+            - df["purchase_price"]
+            - df["delivery_to_warehouse"]
+            - df["wb_commission_rub"]
+            - df["wb_logistics"]
+            - df["tax_rub"]
+            - df["packaging"]
+            - df["fuel"]
+            - df["gift"]
+            - df["defect_percent"]
+        )
         row = df.iloc[0]
         return LatestCostsResponse(**row.to_dict())
     finally:
@@ -653,6 +666,18 @@ async def get_latest_costs_all():
         df = pd.read_sql_query(query, conn)
         df.columns = df.columns.str.lower()
         df = df.rename(columns={"vendorcode": "vendor_code"})
+        df["profit_per_item"] = (
+            df["real_defect_percent"]
+            - df["purchase_price"]
+            - df["delivery_to_warehouse"]
+            - df["wb_commission_rub"]
+            - df["wb_logistics"]
+            - df["tax_rub"]
+            - df["packaging"]
+            - df["fuel"]
+            - df["gift"]
+            - df["defect_percent"]
+        )
         return df.to_dict(orient="records")
     finally:
         if conn:
