@@ -369,18 +369,43 @@ def get_sales_filtered_range(
         return {"data": [], "total_profit": 0}
     df = df.fillna(0)
     df["cost_price"] = (
-            df["purchase_price"] + df["delivery_to_warehouse"] + df["wb_commission_rub"] +
-            df["wb_logistics"] + df["tax_rub"] + df["packaging"] + df["fuel"] + df["gift"] + df["defect_percent"]
+        df["purchase_price"]
+        + df["delivery_to_warehouse"]
+        + df["wb_commission_rub"]
+        + df["wb_logistics"]
+        + df["tax_rub"]
+        + df["packaging"]
+        + df["fuel"]
+        + df["gift"]
+        + df["defect_percent"]
     )
     df["orderscount"] = df["orderscount"].astype(int)
-    df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
-    grouped = df.groupby("imtid").agg({
-        "orderscount": "sum",
-        "ad_spend": "sum",
-        "profit": "sum"
-    }).reset_index()
+    df["profit"] = (
+        df["actual_discounted_price"] - df["cost_price"]
+    ) * df["orderscount"] - df["ad_spend"]
+    df["investment"] = (
+        df["purchase_price"]
+        + df["delivery_to_warehouse"]
+        + df["packaging"]
+        + df["fuel"]
+        + df["gift"]
+    ) * df["orderscount"]
+    grouped = (
+        df.groupby("imtid")
+        .agg({"orderscount": "sum", "ad_spend": "sum", "profit": "sum", "investment": "sum"})
+        .reset_index()
+    )
     total_profit = round(grouped["profit"].sum(), 2)
-    return {"data": grouped.to_dict(orient="records"), "total_profit": total_profit}
+    total_ad_spend = round(grouped["ad_spend"].sum(), 2)
+    total_investment = grouped["investment"].sum()
+    margin_percent = round(total_profit / total_investment * 100, 2) if total_investment else 0
+    grouped = grouped.drop(columns=["investment"])
+    return {
+        "data": grouped.to_dict(orient="records"),
+        "total_profit": total_profit,
+        "total_ad_spend": total_ad_spend,
+        "margin_percent": margin_percent,
+    }
 
 
 ### Продажи по конкретной imtID, сгруппированные по vendorCode

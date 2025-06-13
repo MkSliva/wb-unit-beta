@@ -62,7 +62,12 @@ const CardComparison = ({ goBack }) => {
         if (g.type === "ad_manager_name" && g.value === "0") {
           labelVal = "Без менеджера";
         }
-        res.push({ label: `${g.type}: ${labelVal}`, total_profit: d.total_profit });
+        res.push({
+          label: `${g.type}: ${labelVal}`,
+          total_profit: d.total_profit,
+          total_ad_spend: d.total_ad_spend,
+          margin_percent: d.margin_percent,
+        });
       }
     }
     setResults(res);
@@ -131,10 +136,13 @@ const CardComparison = ({ goBack }) => {
       <div className="mt-4">
         <button onClick={fetchData} className="px-4 py-2 bg-blue-500 text-white rounded">Сравнить</button>
       </div>
-      <div className="mt-4">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         {results.map((r) => (
-          <div key={r.label} className="mb-2">
-            {r.label}: {r.total_profit}
+          <div key={r.label} className="border rounded p-4 bg-gray-50">
+            <h3 className="font-semibold mb-2">{r.label}</h3>
+            <div className="text-sm">Чистая прибыль: {r.total_profit.toFixed(2)} ₽</div>
+            <div className="text-sm">Маржа от вложений: {r.margin_percent.toFixed(2)} %</div>
+            <div className="text-sm">Рекламный расход: {r.total_ad_spend.toFixed(2)} ₽</div>
           </div>
         ))}
       </div>
