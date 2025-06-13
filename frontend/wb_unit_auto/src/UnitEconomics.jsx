@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { DataGrid } from "@mui/x-data-grid";
-import { Button } from "@mui/material";
+// Render a plain HTML table so the page works even without extra libraries
 
 const fields = [
   "purchase_price",
@@ -30,8 +29,7 @@ const UnitEconomics = ({ goBack }) => {
       .catch((err) => console.error("Failed to fetch costs", err));
   }, []);
 
-  const handleCellEditCommit = (params) => {
-    const { id, field, value } = params;
+  const handleChange = (id, field, value) => {
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   };
 
@@ -60,28 +58,29 @@ const UnitEconomics = ({ goBack }) => {
     }
   };
 
-  const columns = [
-    { field: "vendor_code", headerName: "Артикул", width: 120 },
-    { field: "profit_per_item", headerName: "profit_per_item", type: "number", width: 150 },
-    ...fields.map((f) => ({ field: f, headerName: f, type: "number", editable: true, width: 150 })),
-    { field: "start_date", headerName: "Дата начала", editable: true, width: 130 },
-    { field: "end_date", headerName: "Дата конца", editable: true, width: 130 },
-    {
-      field: "actions",
-      headerName: "",
-      sortable: false,
-      width: 130,
-      renderCell: (params) => (
-        <Button variant="outlined" size="small" onClick={() => saveRow(params.row)}>
-          Сохранить
-        </Button>
-      ),
-    },
-  ];
+  const [sortField, setSortField] = useState(null);
+  const [sortAsc, setSortAsc] = useState(true);
 
   const displayedRows = filterMissing
     ? rows.filter((item) => fields.some((f) => !item[f] || item[f] === 0))
     : rows;
+
+  const sortedRows = React.useMemo(() => {
+    if (!sortField) return displayedRows;
+    return [...displayedRows].sort((a, b) => {
+      if (a[sortField] === b[sortField]) return 0;
+      return a[sortField] > b[sortField] ? (sortAsc ? 1 : -1) : sortAsc ? -1 : 1;
+    });
+  }, [displayedRows, sortField, sortAsc]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
+  };
 
   return (
     <div className="container mx-auto p-4">
@@ -100,13 +99,63 @@ const UnitEconomics = ({ goBack }) => {
         />
         Показать только незаполненные
       </label>
-      <div style={{ height: 500, width: "100%" }}>
-        <DataGrid
-          rows={displayedRows}
-          columns={columns}
-          onCellEditCommit={handleCellEditCommit}
-          density="compact"
-        />
+      <div className="overflow-auto" style={{ maxHeight: 500 }}>
+        <table className="min-w-full text-sm border border-gray-300">
+          <thead className="sticky top-0 bg-gray-100">
+            <tr>
+              <th className="p-1 border" onClick={() => handleSort('vendor_code')}>Артикул</th>
+              <th className="p-1 border" onClick={() => handleSort('profit_per_item')}>profit_per_item</th>
+              {fields.map((f) => (
+                <th key={f} className="p-1 border" onClick={() => handleSort(f)}>{f}</th>
+              ))}
+              <th className="p-1 border" onClick={() => handleSort('start_date')}>Дата начала</th>
+              <th className="p-1 border" onClick={() => handleSort('end_date')}>Дата конца</th>
+              <th className="p-1 border"> </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((row) => (
+              <tr key={row.id} className="odd:bg-gray-50">
+                <td className="p-1 border whitespace-nowrap max-w-[8rem] truncate">{row.vendor_code}</td>
+                <td className="p-1 border">{row.profit_per_item}</td>
+                {fields.map((f) => (
+                  <td key={f} className="p-1 border">
+                    <input
+                      type="number"
+                      value={row[f] ?? ''}
+                      onChange={(e) => handleChange(row.id, f, e.target.value)}
+                      className="w-24 border rounded p-0.5"
+                    />
+                  </td>
+                ))}
+                <td className="p-1 border">
+                  <input
+                    type="date"
+                    value={row.start_date}
+                    onChange={(e) => handleChange(row.id, 'start_date', e.target.value)}
+                    className="border rounded p-0.5"
+                  />
+                </td>
+                <td className="p-1 border">
+                  <input
+                    type="date"
+                    value={row.end_date}
+                    onChange={(e) => handleChange(row.id, 'end_date', e.target.value)}
+                    className="border rounded p-0.5"
+                  />
+                </td>
+                <td className="p-1 border">
+                  <button
+                    className="px-2 py-1 bg-blue-500 text-white rounded"
+                    onClick={() => saveRow(row)}
+                  >
+                    Сохранить
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
