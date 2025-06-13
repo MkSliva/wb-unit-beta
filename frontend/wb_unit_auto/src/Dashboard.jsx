@@ -221,6 +221,7 @@ const Dashboard = ({ openEconomics, openMissing }) => {
             defect_percent: firstVendorData.defect_percent || 0,
             start_date: startDate,
           });
+          fetchLatestCost(firstVendorData.vendorcode);
         }
       } catch (err) {
         console.error("Error fetching group details or price history:", err); // Обновлено сообщение об ошибке
@@ -383,10 +384,28 @@ const Dashboard = ({ openEconomics, openMissing }) => {
       if (response.ok) {
         const data = await response.json();
         setLatestCosts((prev) => ({ ...prev, [vendorCode]: data }));
+        setEditData((prev) => ({
+          ...prev,
+          vendorcode: vendorCode,
+          purchase_price: data.purchase_price || 0,
+          delivery_to_warehouse: data.delivery_to_warehouse || 0,
+          wb_commission_rub: data.wb_commission_rub || 0,
+          wb_logistics: data.wb_logistics || 0,
+          tax_rub: data.tax_rub || 0,
+          packaging: data.packaging || 0,
+          fuel: data.fuel || 0,
+          gift: data.gift || 0,
+          defect_percent: data.defect_percent || 0,
+        }));
       }
     } catch (error) {
       console.error("Error fetching latest costs:", error);
     }
+  };
+
+  const handleVendorSelect = async (e) => {
+    const vendor = e.target.value;
+    await fetchLatestCost(vendor);
   };
 
   const fetchPurchaseBatches = async (vendorCode) => {
@@ -801,19 +820,18 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <label className="block">
                       Артикул для обновления:
-                      <input
-                        type="text"
+                      <select
                         name="vendorcode"
                         className="border p-2 rounded-md w-full mt-1"
                         value={editData.vendorcode || ""}
-                        onChange={handleEditChange}
-                        list="vendorcodes-list-edit"
-                      />
-                      <datalist id="vendorcodes-list-edit">
+                        onChange={handleVendorSelect}
+                      >
                         {groupDetails.map((item) => (
-                          <option key={item.vendorcode} value={item.vendorcode} />
+                          <option key={item.vendorcode} value={item.vendorcode}>
+                            {item.vendorcode}
+                          </option>
                         ))}
-                      </datalist>
+                      </select>
                     </label>
                     <label className="block">
                       Дата начала действия:
@@ -850,36 +868,12 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                       />
                     </label>
                     <label className="block">
-                      Комиссия WB (руб):
-                      <input
-                        type="number"
-                        name="wb_commission_rub"
-                        className="border p-2 rounded-md w-full mt-1"
-                        value={editData.wb_commission_rub || ""}
-                        onChange={handleEditChange}
-                        min="0"
-                        step="0.01"
-                      />
-                    </label>
-                    <label className="block">
                       Логистика WB (руб):
                       <input
                         type="number"
                         name="wb_logistics"
                         className="border p-2 rounded-md w-full mt-1"
                         value={editData.wb_logistics || ""}
-                        onChange={handleEditChange}
-                        min="0"
-                        step="0.01"
-                      />
-                    </label>
-                    <label className="block">
-                      Налог (руб):
-                      <input
-                        type="number"
-                        name="tax_rub"
-                        className="border p-2 rounded-md w-full mt-1"
-                        value={editData.tax_rub || ""}
                         onChange={handleEditChange}
                         min="0"
                         step="0.01"
