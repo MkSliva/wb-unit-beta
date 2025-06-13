@@ -3,8 +3,14 @@ import math
 import httpx
 import asyncio
 import json
+from datetime import datetime, timedelta
+from collections import defaultdict
+from typing import Optional, List, Dict  # Добавлены для полной типизации
+
 import pandas as pd
-from typing import Optional, List, Dict # Добавлены для полной типизации
+import psycopg2
+import requests
+from dotenv import load_dotenv
 
 # 🔐 Загрузка токена
 load_dotenv("api.env") # Убедитесь, что api.env находится в том же каталоге или указан правильный путь
