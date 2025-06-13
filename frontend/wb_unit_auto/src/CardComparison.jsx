@@ -67,6 +67,10 @@ const CardComparison = ({ goBack }) => {
           total_profit: d.total_profit,
           total_ad_spend: d.total_ad_spend,
           margin_percent: d.margin_percent,
+          add_to_cart_conv: d.add_to_cart_conv,
+          cart_to_order_conv: d.cart_to_order_conv,
+          ad_ctr: d.ad_ctr,
+          ad_cpc: d.ad_cpc,
         });
       }
     }
@@ -143,6 +147,10 @@ const CardComparison = ({ goBack }) => {
             <div className="text-sm">Чистая прибыль: {r.total_profit.toFixed(2)} ₽</div>
             <div className="text-sm">Маржа от вложений: {r.margin_percent.toFixed(2)} %</div>
             <div className="text-sm">Рекламный расход: {r.total_ad_spend.toFixed(2)} ₽</div>
+            <div className="text-sm">ATC конверсия: {r.add_to_cart_conv.toFixed(2)}%</div>
+            <div className="text-sm">Cart→Order конверсия: {r.cart_to_order_conv.toFixed(2)}%</div>
+            <div className="text-sm">Ad CTR: {r.ad_ctr.toFixed(2)}%</div>
+            <div className="text-sm">Ad CPC: {r.ad_cpc.toFixed(2)} ₽</div>
           </div>
         ))}
       </div>
