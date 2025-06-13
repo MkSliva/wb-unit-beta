@@ -34,6 +34,9 @@ const Dashboard = ({ openEconomics, openMissing }) => {
   const [latestCosts, setLatestCosts] = useState({});
   const [hoveredVendor, setHoveredVendor] = useState(null);
   const [purchaseBatches, setPurchaseBatches] = useState({});
+  const [withManager, setWithManager] = useState(false);
+  const [showManagerForm, setShowManagerForm] = useState(false);
+  const [managerData, setManagerData] = useState({ name: "", start_date: "" });
 
   // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
@@ -124,6 +127,11 @@ const Dashboard = ({ openEconomics, openMissing }) => {
   // *** МЕМОИЗИРОВАННЫЕ ОТСОРТИРОВАННЫЕ ДАННЫЕ ***
   const sortedGroupedSales = useMemo(() => {
     let sortableItems = [...groupedSales];
+    if (withManager) {
+      sortableItems = sortableItems.filter(
+        (i) => i.ad_manager_name && i.ad_manager_name !== "0"
+      );
+    }
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
         const valA = a[sortConfig.key];
@@ -247,6 +255,8 @@ const Dashboard = ({ openEconomics, openMissing }) => {
     setPurchasePriceHistory([]);
     setPurchaseBatches({});
     setEditData({});
+    setShowManagerForm(false);
+    setManagerData({ name: "", start_date: "" });
     setError(null);
   };
 
@@ -343,6 +353,28 @@ const Dashboard = ({ openEconomics, openMissing }) => {
     } catch (error) {
       console.error("Сетевая ошибка при добавлении новой партии:", error);
       alert("Произошла сетевая ошибка. Проверьте консоль.");
+    }
+  };
+
+  const submitAdManager = async () => {
+    if (!managerData.name || !selectedImt) return;
+    const payload = {
+      imt_id: selectedImt,
+      ad_manager_name: managerData.name,
+      start_date: managerData.start_date || startDate,
+    };
+    try {
+      const resp = await fetch("http://localhost:8000/api/update_ad_manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (resp.ok) {
+        alert("Рекламный менеджер обновлен");
+        fetchData();
+      }
+    } catch (e) {
+      console.error("Failed to update manager", e);
     }
   };
 
@@ -472,6 +504,18 @@ const Dashboard = ({ openEconomics, openMissing }) => {
             onChange={(e) => setEndDate(e.target.value)}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
           />
+        </div>
+        <div className="flex items-center mt-6">
+          <input
+            type="checkbox"
+            id="withManager"
+            checked={withManager}
+            onChange={(e) => setWithManager(e.target.checked)}
+            className="mr-2"
+          />
+          <label htmlFor="withManager" className="text-sm font-medium text-gray-700">
+            С рекламным менеджером
+          </label>
         </div>
         <button
           onClick={fetchData}
@@ -940,15 +984,57 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                         onChange={handleEditChange}
                         min="0"
                         step="0.01"
-                      />
-                    </label>
-                  </div>
+                  />
+                </label>
+              </div>
+              <div className="mt-4">
                 <button
-                    onClick={submitCostUpdate}
-                    className="mt-4 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-                  >
-                    Обновить расходы для артикула
-                  </button>
+                  onClick={submitCostUpdate}
+                  className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                >
+                  Обновить расходы для артикула
+                </button>
+              </div>
+
+              {/* ad manager section */}
+              <div className="mt-6">
+                <label className="inline-flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={showManagerForm}
+                    onChange={(e) => setShowManagerForm(e.target.checked)}
+                    className="mr-2"
+                  />
+                  <span>Рекламный менеджер</span>
+                </label>
+                {showManagerForm && (
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Имя"
+                      value={managerData.name}
+                      onChange={(e) =>
+                        setManagerData((p) => ({ ...p, name: e.target.value }))
+                      }
+                      className="border p-2 rounded-md"
+                    />
+                    <input
+                      type="date"
+                      value={managerData.start_date || startDate}
+                      onChange={(e) =>
+                        setManagerData((p) => ({ ...p, start_date: e.target.value }))
+                      }
+                      className="border p-2 rounded-md"
+                    />
+                    <button
+                      onClick={() => submitAdManager()}
+                      className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                    >
+                      Сохранить менеджера
+                    </button>
+                  </div>
+                )}
+              </div>
                 </div>
 
                 {/* --- Закупочные партии --- */}

@@ -38,7 +38,27 @@ def ensure_real_defect_column():
             conn.close()
 
 
+def ensure_ad_manager_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "ad_manager_name" TEXT')
+        conn.commit()
+        cur.execute('UPDATE sales SET "ad_manager_name" = \'0\' WHERE "ad_manager_name" IS NULL')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 ensure_real_defect_column()
+ensure_ad_manager_column()
 
 # --- Telegram Bot API Настройки ---
 # ⚠️ ОБЯЗАТЕЛЬНО УСТАНОВИТЕ ЭТИ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ НА ВАШЕМ СЕРВЕРЕ!
@@ -188,7 +208,7 @@ def get_sales_grouped_detailed_range(
                        "packaging", \
                        "fuel", \
                        "gift", \
-                       "defect_percent", date
+                       "defect_percent", ad_manager_name, date
                 FROM sales
                 WHERE date BETWEEN %s \
                   AND %s \
@@ -235,6 +255,11 @@ def get_sales_grouped_detailed_range(
             "investment_total": "sum"
         }).reset_index()
 
+        df_sorted = df.sort_values(["imtid", "date"])
+        latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
+            lambda x: next((v for v in reversed(x) if v not in [None, '', '0']), '')
+        )
+
         max_sales_per_vendorcode = df.loc[df.groupby('imtid')['orderscount'].idxmax()]
         # Выбираем только нужные столбцы и переименовываем vendorcode для ясности
         max_sales_per_vendorcode = max_sales_per_vendorcode[['imtid', 'vendorcode']].rename(
@@ -247,6 +272,8 @@ def get_sales_grouped_detailed_range(
         grouped["vendorcodes"] = grouped["imtid"].apply(
             lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
         )
+
+        grouped["ad_manager_name"] = grouped["imtid"].map(latest_manager)
 
         total_revenue = grouped["revenue"].sum()
         total_profit_sum = grouped["profit"].sum()
@@ -497,6 +524,7 @@ class LatestCostsResponse(BaseModel):
     gift: float
     defect_percent: float
     real_defect_percent: float
+    ad_manager_name: Optional[str] = None
 
 
 class MissingCostEntry(BaseModel):
@@ -589,7 +617,8 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
         query = """
                 SELECT "vendorCode", purchase_price, delivery_to_warehouse,
                        wb_commission_rub, wb_logistics, tax_rub, packaging,
-                       fuel, gift, defect_percent, real_defect_percent, date
+                       fuel, gift, defect_percent, real_defect_percent,
+                       ad_manager_name, date
                 FROM sales
                 WHERE "vendorCode" = %s
                 ORDER BY date DESC
@@ -614,7 +643,8 @@ async def get_latest_costs_all():
         conn = psycopg2.connect(DB_URL)
         query = """
                 SELECT DISTINCT ON ("vendorCode") "vendorCode", purchase_price, delivery_to_warehouse,
-                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, real_defect_percent, date
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift,
+                       defect_percent, real_defect_percent, ad_manager_name, date
                 FROM sales
                 ORDER BY "vendorCode", date DESC
                 """
@@ -688,6 +718,12 @@ class PurchaseBatchResponse(BaseModel):
     end_date: Optional[date]
 
 
+class AdManagerUpdate(BaseModel):
+    imt_id: int
+    ad_manager_name: str
+    start_date: date
+
+
 # --- НОВЫЙ Эндпоинт для создания закупочной партии ---
 @app.post("/api/purchase_batches")
 async def create_purchase_batch(batch: PurchaseBatchCreate):
@@ -756,6 +792,31 @@ async def get_purchase_batches(vendor_code: str = Query(..., description="Арт
         df.columns = df.columns.str.lower()
         return df.to_dict(orient="records")
     finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/update_ad_manager")
+def update_ad_manager(update: AdManagerUpdate):
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE sales SET ad_manager_name = %s WHERE \"imtID\" = %s AND date >= %s",
+            (update.ad_manager_name, update.imt_id, update.start_date.strftime('%Y-%m-%d')),
+        )
+        affected = cur.rowcount
+        conn.commit()
+        return {"updated_rows": affected}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cur:
+            cur.close()
         if conn:
             conn.close()
 
