@@ -36,6 +36,7 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
   const [purchaseBatches, setPurchaseBatches] = useState({});
   const [cardChangeOptions, setCardChangeOptions] = useState([]);
   const [cardChanges, setCardChanges] = useState([{ option: "", start_date: "" }]);
+  const [changeVendors, setChangeVendors] = useState([]);
   const [withManager, setWithManager] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [managerData, setManagerData] = useState({ name: "", start_date: "" });
@@ -180,6 +181,7 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
         }
         const detailsData = await detailsResponse.json();
         setGroupDetails(detailsData.data);
+        setChangeVendors(detailsData.data.map((item) => item.vendorcode));
 
         const batchPromises = detailsData.data.map((item) =>
           fetchPurchaseBatches(item.vendorcode)
@@ -275,6 +277,7 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
     setManagerData({ name: "", start_date: "" });
     setManagerInfo({ ad_manager_name: "", start_date: "" });
     setError(null);
+    setChangeVendors([]);
   };
 
   const handleEditChange = (e) => {
@@ -388,17 +391,19 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
   };
 
   const saveCardChanges = async () => {
-    for (const c of cardChanges) {
-      if (!c.option) continue;
-      await fetch("http://localhost:8000/api/update_card_change", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorcode: editData.vendorcode,
-          card_change: c.option,
-          start_date: c.start_date || startDate,
-        }),
-      });
+    for (const vendor of changeVendors) {
+      for (const c of cardChanges) {
+        if (!c.option) continue;
+        await fetch("http://localhost:8000/api/update_card_change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vendorcode: vendor,
+            card_change: c.option,
+            start_date: c.start_date || startDate,
+          }),
+        });
+      }
     }
     alert("Изменения сохранены");
   };
@@ -1136,6 +1141,25 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
               </div>
               <div className="mt-8 border-t pt-4">
                 <h4 className="font-semibold mb-2">Изменения в карточке</h4>
+                <div className="mb-2">
+                  <label className="block mb-1">Артикулы:</label>
+                  <select
+                    multiple
+                    className="border p-1 rounded w-full"
+                    value={changeVendors}
+                    onChange={(e) =>
+                      setChangeVendors(
+                        Array.from(e.target.selectedOptions).map((o) => o.value)
+                      )
+                    }
+                  >
+                    {groupDetails.map((item) => (
+                      <option key={item.vendorcode} value={item.vendorcode}>
+                        {item.vendorcode}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {cardChanges.map((c, idx) => (
                   <div key={idx} className="flex items-center mb-2">
                     <select
