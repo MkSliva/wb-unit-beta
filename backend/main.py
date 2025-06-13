@@ -364,6 +364,7 @@ def get_sales_filtered_range(
     )
     df = pd.read_sql_query(query, conn, params=(start_date, end_date, filter_value))
     conn.close()
+    df.columns = df.columns.str.lower()
     if df.empty:
         return {"data": [], "total_profit": 0}
     df = df.fillna(0)
