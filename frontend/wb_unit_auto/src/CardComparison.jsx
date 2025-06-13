@@ -16,15 +16,20 @@ const CardComparison = ({ goBack }) => {
   const [results, setResults] = useState([]);
   const [managerOpts, setManagerOpts] = useState([]);
   const [changeOpts, setChangeOpts] = useState([]);
+  const [brandOpts, setBrandOpts] = useState([]);
 
   useEffect(() => {
     fetch("http://localhost:8000/api/ad_managers")
       .then((r) => (r.ok ? r.json() : []))
-      .then(setManagerOpts)
+      .then((d) => setManagerOpts(["0", ...d]))
       .catch(() => {});
     fetch("http://localhost:8000/api/card_change_options")
       .then((r) => (r.ok ? r.json() : []))
       .then(setChangeOpts)
+      .catch(() => {});
+    fetch("http://localhost:8000/api/brands")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setBrandOpts)
       .catch(() => {});
   }, []);
 
@@ -37,6 +42,10 @@ const CardComparison = ({ goBack }) => {
   };
 
   const fetchData = async () => {
+    if (!start || !end) {
+      alert("Выберите диапазон дат");
+      return;
+    }
     const res = [];
     for (const g of groups) {
       if (!g.value) continue;
@@ -49,7 +58,11 @@ const CardComparison = ({ goBack }) => {
       const r = await fetch(`http://localhost:8000/api/sales_filtered_range?${params.toString()}`);
       if (r.ok) {
         const d = await r.json();
-        res.push({ label: `${g.type}: ${g.value}`, total_profit: d.total_profit });
+        let labelVal = g.value;
+        if (g.type === "ad_manager_name" && g.value === "0") {
+          labelVal = "Без менеджера";
+        }
+        res.push({ label: `${g.type}: ${labelVal}`, total_profit: d.total_profit });
       }
     }
     setResults(res);
@@ -78,7 +91,7 @@ const CardComparison = ({ goBack }) => {
               </option>
             ))}
           </select>
-          {g.type === "ad_manager_name" || g.type === "card_changes" ? (
+          {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
             <select
               value={g.value}
               onChange={(e) => handleChange(idx, "value", e.target.value)}
@@ -88,13 +101,19 @@ const CardComparison = ({ goBack }) => {
               {g.type === "ad_manager_name" &&
                 managerOpts.map((m) => (
                   <option key={m} value={m}>
-                    {m}
+                    {m === "0" ? "Без менеджера" : m}
                   </option>
                 ))}
               {g.type === "card_changes" &&
                 changeOpts.map((o) => (
                   <option key={o} value={o}>
                     {o}
+                  </option>
+                ))}
+              {g.type === "brand" &&
+                brandOpts.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
                   </option>
                 ))}
             </select>
