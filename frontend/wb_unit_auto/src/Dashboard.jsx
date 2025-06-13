@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const Dashboard = ({ openEconomics, openMissing }) => {
+const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalProfit, setTotalProfit] = useState(0);
@@ -34,6 +34,8 @@ const Dashboard = ({ openEconomics, openMissing }) => {
   const [latestCosts, setLatestCosts] = useState({});
   const [hoveredVendor, setHoveredVendor] = useState(null);
   const [purchaseBatches, setPurchaseBatches] = useState({});
+  const [cardChangeOptions, setCardChangeOptions] = useState([]);
+  const [cardChanges, setCardChanges] = useState([{ option: "", start_date: "" }]);
   const [withManager, setWithManager] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [managerData, setManagerData] = useState({ name: "", start_date: "" });
@@ -59,6 +61,13 @@ const Dashboard = ({ openEconomics, openMissing }) => {
 
     setEndDate(today.toISOString().split("T")[0]);
     setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
+  }, []);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/card_change_options")
+      .then((r) => r.json())
+      .then((d) => setCardChangeOptions(d))
+      .catch(() => {});
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -364,6 +373,36 @@ const Dashboard = ({ openEconomics, openMissing }) => {
     }
   };
 
+  const handleCardChange = (idx, field, value) => {
+    setCardChanges((prev) =>
+      prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c))
+    );
+  };
+
+  const addCardChange = () => {
+    setCardChanges((p) => [...p, { option: "", start_date: "" }]);
+  };
+
+  const removeCardChange = (idx) => {
+    setCardChanges((p) => p.filter((_, i) => i !== idx));
+  };
+
+  const saveCardChanges = async () => {
+    for (const c of cardChanges) {
+      if (!c.option) continue;
+      await fetch("http://localhost:8000/api/update_card_change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorcode: editData.vendorcode,
+          card_change: c.option,
+          start_date: c.start_date || startDate,
+        }),
+      });
+    }
+    alert("Изменения сохранены");
+  };
+
   const submitAdManager = async () => {
     if (!managerData.name || !selectedImt) return;
     const payload = {
@@ -495,12 +534,26 @@ const Dashboard = ({ openEconomics, openMissing }) => {
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">WB Аналитика Продаж</h1>
-        <button
-          onClick={openEconomics}
-          className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-        >
-          Данные Юнит Экономики
-        </button>
+        <div className="space-x-2">
+          <button
+            onClick={openEconomics}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Данные Юнит Экономики
+          </button>
+          <button
+            onClick={openChanges}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Изменения карточек
+          </button>
+          <button
+            onClick={openCompare}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Сравнение карточек
+          </button>
+        </div>
       </div>
 
       <div className="flex space-x-4 mb-4">
@@ -1081,7 +1134,33 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                   </>
                 )}
               </div>
-                </div>
+              <div className="mt-8 border-t pt-4">
+                <h4 className="font-semibold mb-2">Изменения в карточке</h4>
+                {cardChanges.map((c, idx) => (
+                  <div key={idx} className="flex items-center mb-2">
+                    <select
+                      className="border p-1 rounded mr-2"
+                      value={c.option}
+                      onChange={(e) => handleCardChange(idx, "option", e.target.value)}
+                    >
+                      <option value="">Выберите</option>
+                      {cardChangeOptions.map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      className="border p-1 rounded mr-2"
+                      value={c.start_date}
+                      onChange={(e) => handleCardChange(idx, "start_date", e.target.value)}
+                    />
+                    <button className="text-red-600" onClick={() => removeCardChange(idx)}>x</button>
+                  </div>
+                ))}
+                <button onClick={addCardChange} className="px-2 py-1 bg-gray-200 rounded mr-2">Добавить изменение</button>
+                <button onClick={saveCardChanges} className="px-4 py-1 bg-green-500 text-white rounded">Сохранить</button>
+              </div>
+              </div>
 
                 {/* --- Закупочные партии --- */}
                 <div className="mt-6">

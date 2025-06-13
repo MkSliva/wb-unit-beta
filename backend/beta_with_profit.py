@@ -363,9 +363,11 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
     # Ensure new columns exist and have default values
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "ad_manager_name" TEXT')
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
     conn.commit()
     cursor.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
     cursor.execute("UPDATE sales SET \"ad_manager_name\" = '0' WHERE \"ad_manager_name\" IS NULL")
+    cursor.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
     conn.commit()
 
     # 📦 Получение справочной информации из самой свежей записи таблицы sales
@@ -373,7 +375,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
         """
         SELECT DISTINCT ON ("nm_ID") "nm_ID", brand, "subjectName", purchase_price,
                delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
-               real_defect_percent, ad_manager_name
+               real_defect_percent, ad_manager_name, card_changes
         FROM sales
         ORDER BY "nm_ID", "date" DESC
         """
@@ -391,6 +393,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
             "gift": row[8] or 0,
             "real_defect_percent": row[9] or peremennaya_real_defect_percent,
             "ad_manager_name": row[10] or '0',
+            "card_changes": row[11] or '0',
             # 'cost_price', 'profit_per_item', 'wb_commission_rub', 'tax_rub', 'commission_percent'
             # теперь будут рассчитаны
         } for row in card_details_raw
@@ -516,6 +519,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "real_defect_percent": real_defect_percent,
                 "defect_percent": defect_percent,
                 "ad_manager_name": ad_manager_name,
+                "card_changes": card_details.get(nmID, {}).get("card_changes", '0'),
             }
 
             merged["nm_ID"] = nmID # nm_ID уже есть в record, но явно добавляем для ясности
