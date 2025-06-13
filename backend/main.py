@@ -823,6 +823,37 @@ def update_ad_manager(update: AdManagerUpdate):
             conn.close()
 
 
+@app.get("/api/manager_info")
+def get_manager_info(imt_id: int = Query(..., description="IMT ID")):
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ad_manager_name FROM sales "
+            "WHERE \"imtID\" = %s AND ad_manager_name IS NOT NULL "
+            "AND ad_manager_name <> '0' ORDER BY date DESC LIMIT 1",
+            (imt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"ad_manager_name": None, "start_date": None}
+        manager = row[0]
+        cur.execute(
+            "SELECT MIN(date) FROM sales WHERE \"imtID\" = %s AND ad_manager_name = %s",
+            (imt_id, manager),
+        )
+        start_row = cur.fetchone()
+        start_date = start_row[0] if start_row else None
+        return {"ad_manager_name": manager, "start_date": start_date}
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 # --- Модель для обновления других затрат (purchase_price теперь опционален) ---
 class CostUpdate(BaseModel):
     vendorcode: str
