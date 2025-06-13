@@ -805,9 +805,12 @@ def update_ad_manager(update: AdManagerUpdate):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
+        # Apply the new manager only to rows on or after the chosen start date
         cur.execute(
-            "UPDATE sales SET ad_manager_name = %s WHERE \"imtID\" = %s AND date >= %s",
-            (update.ad_manager_name, update.imt_id, update.start_date.strftime('%Y-%m-%d')),
+            "UPDATE sales SET ad_manager_name = %s "
+            "WHERE \"imtID\" = %s AND date >= %s",
+            (update.ad_manager_name, update.imt_id,
+             update.start_date.strftime('%Y-%m-%d')),
         )
         affected = cur.rowcount
         conn.commit()
