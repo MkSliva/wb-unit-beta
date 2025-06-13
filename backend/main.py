@@ -1044,6 +1044,21 @@ def get_ad_managers():
     return rows
 
 
+@app.get("/api/brands")
+def get_brands():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT brand FROM sales "
+        "WHERE brand IS NOT NULL AND brand <> '' "
+        "ORDER BY brand"
+    )
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
 # --- Модель для обновления других затрат (purchase_price теперь опционален) ---
 class CostUpdate(BaseModel):
     vendorcode: str
