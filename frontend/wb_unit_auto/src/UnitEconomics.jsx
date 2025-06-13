@@ -68,8 +68,16 @@ const UnitEconomics = ({ goBack }) => {
   const sortedRows = React.useMemo(() => {
     if (!sortField) return displayedRows;
     return [...displayedRows].sort((a, b) => {
-      if (a[sortField] === b[sortField]) return 0;
-      return a[sortField] > b[sortField] ? (sortAsc ? 1 : -1) : sortAsc ? -1 : 1;
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      const aNum = parseFloat(aVal);
+      const bNum = parseFloat(bVal);
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        aVal = aNum;
+        bVal = bNum;
+      }
+      if (aVal === bVal) return 0;
+      return aVal > bVal ? (sortAsc ? 1 : -1) : sortAsc ? -1 : 1;
     });
   }, [displayedRows, sortField, sortAsc]);
 
