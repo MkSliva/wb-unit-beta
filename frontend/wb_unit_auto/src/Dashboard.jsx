@@ -997,18 +997,19 @@ const Dashboard = ({ openEconomics, openMissing }) => {
               </div>
 
               {/* ad manager section */}
-              <div className="mt-6">
-                <label className="inline-flex items-center">
+              <div className="mt-8 border-t pt-4">
+                <h4 className="font-semibold mb-2">Рекламный менеджер</h4>
+                <label className="inline-flex items-center mb-2">
                   <input
                     type="checkbox"
                     checked={showManagerForm}
                     onChange={(e) => setShowManagerForm(e.target.checked)}
                     className="mr-2"
                   />
-                  <span>Рекламный менеджер</span>
+                  <span>Указать менеджера</span>
                 </label>
                 {showManagerForm && (
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input
                       type="text"
                       placeholder="Имя"
