@@ -779,8 +779,6 @@ def update_costs(update: CostUpdate):
 
         fields_to_update_sales = []
         values_to_update_sales = []
-        fields_to_update_cards = []
-        values_to_update_cards = []
 
         # Список полей, которые могут быть обновлены
         updatable_fields = [
@@ -794,16 +792,11 @@ def update_costs(update: CostUpdate):
             if val is not None and not (isinstance(val, float) and np.isnan(val)):
                 fields_to_update_sales.append(f'"{field}" = %s')
                 values_to_update_sales.append(val)
-                fields_to_update_cards.append(f'"{field}" = %s')
-                values_to_update_cards.append(val)
             elif isinstance(val, float) and np.isnan(val):
                 fields_to_update_sales.append(f'"{field}" = %s')
                 values_to_update_sales.append(0)  # Отправляем 0 в базу, если на фронте было null
-                fields_to_update_cards.append(f'"{field}" = %s')
-                values_to_update_cards.append(0)
 
         updated_rows_sales = 0
-        updated_rows_cards = 0
 
         if fields_to_update_sales:
             # Обновляем таблицу sales
@@ -856,14 +849,10 @@ def update_costs(update: CostUpdate):
                 params_recalc.append(update.end_date.strftime('%Y-%m-%d'))
             cursor.execute(query_recalc, params_recalc)
 
-            # Обновляем базовую таблицу cards для будущих расчётов и согласованности
-            if fields_to_update_cards:
-                query_cards_update = f"UPDATE cards SET {', '.join(fields_to_update_cards)} WHERE \"vendor_code\" = %s"
-                cursor.execute(query_cards_update, values_to_update_cards + [update.vendorcode])
-                updated_rows_cards = cursor.rowcount
+            # Базовая таблица cards больше не синхронизируется через этот эндпоинт
 
         conn.commit()
-        return {"updated_sales_rows": updated_rows_sales, "updated_cards_rows": updated_rows_cards}
+        return {"updated_sales_rows": updated_rows_sales}
     except Exception as e:
         if conn:
             conn.rollback()
