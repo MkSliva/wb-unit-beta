@@ -2,11 +2,6 @@ import os
 import math
 import httpx
 import asyncio
-import requests
-import psycopg2
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from collections import defaultdict
 import json
 import pandas as pd
 from typing import Optional, List, Dict # Добавлены для полной типизации
@@ -373,7 +368,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
     # 📦 Получение справочной информации из самой свежей записи таблицы sales
     cursor.execute(
         """
-        SELECT DISTINCT ON ("nm_ID") "nm_ID", brand, "subjectName", purchase_price,
+        SELECT DISTINCT ON ("nm_ID") "nm_ID", "imtID", brand, "subjectName", purchase_price,
                delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
                real_defect_percent, ad_manager_name, card_changes
         FROM sales
@@ -383,20 +378,37 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
     card_details_raw = cursor.fetchall()
     card_details = {
         row[0]: {
-            "brand": row[1] or "",
-            "subjectName": row[2] or "", # subjectName теперь нужен для комиссии
-            "purchase_price": row[3] or 0,
-            "delivery_to_warehouse": row[4] or 0,
-            "wb_logistics": row[5] or 0,
-            "packaging": row[6] or 0,
-            "fuel": row[7] or 0,
-            "gift": row[8] or 0,
-            "real_defect_percent": row[9] or peremennaya_real_defect_percent,
-            "ad_manager_name": row[10] or '0',
-            "card_changes": row[11] or '0',
+            "imtID": row[1],
+            "brand": row[2] or "",
+            "subjectName": row[3] or "",  # subjectName теперь нужен для комиссии
+            "purchase_price": row[4] or 0,
+            "delivery_to_warehouse": row[5] or 0,
+            "wb_logistics": row[6] or 0,
+            "packaging": row[7] or 0,
+            "fuel": row[8] or 0,
+            "gift": row[9] or 0,
+            "real_defect_percent": row[10] or peremennaya_real_defect_percent,
+            "ad_manager_name": row[11] or '0',
+            "card_changes": row[12] or '0',
             # 'cost_price', 'profit_per_item', 'wb_commission_rub', 'tax_rub', 'commission_percent'
             # теперь будут рассчитаны
         } for row in card_details_raw
+    }
+
+    cursor.execute(
+        """
+        SELECT DISTINCT ON ("imtID") "imtID", ad_manager_name, card_changes
+        FROM sales
+        ORDER BY "imtID", "date" DESC
+        """
+    )
+    imt_details_raw = cursor.fetchall()
+    imt_fallback = {
+        row[0]: {
+            "ad_manager_name": row[1] or '0',
+            "card_changes": row[2] or '0'
+        }
+        for row in imt_details_raw
     }
 
     for entry in sales_data:
@@ -470,6 +482,15 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "real_defect_percent", peremennaya_real_defect_percent
             )
             ad_manager_name = card_details.get(nmID, {}).get("ad_manager_name", '0')
+            if ad_manager_name in [None, '', '0']:
+                fallback = imt_fallback.get(imtID, {}).get("ad_manager_name")
+                if fallback not in [None, '', '0']:
+                    ad_manager_name = fallback
+            card_changes_val = card_details.get(nmID, {}).get("card_changes", '0')
+            if card_changes_val in [None, '', '0']:
+                cc_fallback = imt_fallback.get(imtID, {}).get("card_changes")
+                if cc_fallback not in [None, '', '0']:
+                    card_changes_val = cc_fallback
             defect_percent = actual_price / 100 * real_defect_percent
 
             # Формула себестоимости с учетом новых рассчитанных значений
@@ -519,7 +540,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "real_defect_percent": real_defect_percent,
                 "defect_percent": defect_percent,
                 "ad_manager_name": ad_manager_name,
-                "card_changes": card_details.get(nmID, {}).get("card_changes", '0'),
+                "card_changes": card_changes_val,
             }
 
             merged["nm_ID"] = nmID # nm_ID уже есть в record, но явно добавляем для ясности
