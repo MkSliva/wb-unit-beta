@@ -81,79 +81,121 @@ const CardComparison = ({ goBack }) => {
     <div className="p-4">
       <div className="flex justify-between mb-4">
         <h1 className="text-xl font-bold">Сравнение карточек</h1>
-        <button onClick={goBack} className="px-4 py-2 bg-gray-300 rounded">Назад</button>
+        <button onClick={goBack} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Назад</button>
       </div>
+
       <div className="mb-4 flex space-x-2">
-        <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="border p-1" />
-        <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="border p-1" />
+        <input
+          type="date"
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+          className="border p-1 rounded"
+        />
+        <input
+          type="date"
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+          className="border p-1 rounded"
+        />
       </div>
-      {groups.map((g, idx) => (
-        <div key={idx} className="mb-2 flex space-x-2 items-center">
-          <select
-            value={g.type}
-            onChange={(e) => handleChange(idx, "type", e.target.value)}
-            className="border p-1"
-          >
-            {filterTypes.map((ft) => (
-              <option key={ft.value} value={ft.value}>
-                {ft.label}
-              </option>
-            ))}
-          </select>
-          {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
+
+      <div className="space-y-2">
+        {groups.map((g, idx) => (
+          <div key={idx} className="flex space-x-2 items-center">
             <select
-              value={g.value}
-              onChange={(e) => handleChange(idx, "value", e.target.value)}
-              className="border p-1"
+              value={g.type}
+              onChange={(e) => handleChange(idx, "type", e.target.value)}
+              className="border p-1 rounded"
             >
-              <option value="">Выберите</option>
-              {g.type === "ad_manager_name" &&
-                managerOpts.map((m) => (
-                  <option key={m} value={m}>
-                    {m === "0" ? "Без менеджера" : m}
-                  </option>
-                ))}
-              {g.type === "card_changes" &&
-                changeOpts.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              {g.type === "brand" &&
-                brandOpts.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
+              {filterTypes.map((ft) => (
+                <option key={ft.value} value={ft.value}>
+                  {ft.label}
+                </option>
+              ))}
             </select>
-          ) : (
-            <input
-              type="text"
-              value={g.value}
-              onChange={(e) => handleChange(idx, "value", e.target.value)}
-              className="border p-1"
-            />
-          )}
-        </div>
-      ))}
-      <button onClick={addGroup} className="mt-2 px-2 py-1 bg-gray-200 rounded">+ Добавить группу</button>
-      <div className="mt-4">
-        <button onClick={fetchData} className="px-4 py-2 bg-blue-500 text-white rounded">Сравнить</button>
-      </div>
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {results.map((r) => (
-          <div key={r.label} className="border rounded p-4 bg-gray-50">
-            <h3 className="font-semibold mb-2">{r.label}</h3>
-            <div className="text-sm">Чистая прибыль: {r.total_profit.toFixed(2)} ₽</div>
-            <div className="text-sm">Маржа от вложений: {r.margin_percent.toFixed(2)} %</div>
-            <div className="text-sm">Рекламный расход: {r.total_ad_spend.toFixed(2)} ₽</div>
-            <div className="text-sm">ATC конверсия: {r.add_to_cart_conv.toFixed(2)}%</div>
-            <div className="text-sm">Cart→Order конверсия: {r.cart_to_order_conv.toFixed(2)}%</div>
-            <div className="text-sm">Ad CTR: {r.ad_ctr.toFixed(2)}%</div>
-            <div className="text-sm">Ad CPC: {r.ad_cpc.toFixed(2)} ₽</div>
+            {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
+              <select
+                value={g.value}
+                onChange={(e) => handleChange(idx, "value", e.target.value)}
+                className="border p-1 rounded"
+              >
+                <option value="">Выберите</option>
+                {g.type === "ad_manager_name" &&
+                  managerOpts.map((m) => (
+                    <option key={m} value={m}>
+                      {m === "0" ? "Без менеджера" : m}
+                    </option>
+                  ))}
+                {g.type === "card_changes" &&
+                  changeOpts.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                {g.type === "brand" &&
+                  brandOpts.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={g.value}
+                onChange={(e) => handleChange(idx, "value", e.target.value)}
+                className="border p-1 rounded"
+              />
+            )}
           </div>
         ))}
       </div>
+
+      <button onClick={addGroup} className="mt-2 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">
+        + Добавить группу
+      </button>
+
+      <div className="mt-4">
+        <button
+          onClick={fetchData}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Сравнить
+        </button>
+      </div>
+
+      {results.length > 0 && (
+        <div className="mt-6 overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left">Группа</th>
+                <th className="px-4 py-2 text-left">Чистая прибыль</th>
+                <th className="px-4 py-2 text-left">Маржа %</th>
+                <th className="px-4 py-2 text-left">Реклама</th>
+                <th className="px-4 py-2 text-left">ATC %</th>
+                <th className="px-4 py-2 text-left">Cart→Order %</th>
+                <th className="px-4 py-2 text-left">Ad CTR %</th>
+                <th className="px-4 py-2 text-left">Ad CPC</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {results.map((r) => (
+                <tr key={r.label} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium whitespace-nowrap">{r.label}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.total_profit.toFixed(2)} ₽</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.margin_percent.toFixed(2)} %</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.total_ad_spend.toFixed(2)} ₽</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.add_to_cart_conv.toFixed(2)}%</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.cart_to_order_conv.toFixed(2)}%</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.ad_ctr.toFixed(2)}%</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{r.ad_cpc.toFixed(2)} ₽</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
