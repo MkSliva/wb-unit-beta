@@ -9,7 +9,7 @@ const fields = [
   "packaging",
   "fuel",
   "gift",
-  "defect_percent",
+  "real_defect_percent",
 ];
 
 const UnitEconomics = ({ goBack }) => {
