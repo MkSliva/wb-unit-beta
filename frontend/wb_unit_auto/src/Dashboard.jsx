@@ -37,6 +37,10 @@ const Dashboard = ({ openEconomics, openMissing }) => {
   const [withManager, setWithManager] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [managerData, setManagerData] = useState({ name: "", start_date: "" });
+  const [managerInfo, setManagerInfo] = useState({
+    ad_manager_name: "",
+    start_date: "",
+  });
 
   // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
@@ -244,6 +248,9 @@ const Dashboard = ({ openEconomics, openMissing }) => {
   const openModal = (imtId) => {
     setSelectedImt(imtId);
     fetchGroupDetails(imtId);
+    fetchManagerInfo(imtId);
+    setShowManagerForm(false);
+    setManagerData({ name: "", start_date: "" });
     setIsModalOpen(true);
   };
 
@@ -257,6 +264,7 @@ const Dashboard = ({ openEconomics, openMissing }) => {
     setEditData({});
     setShowManagerForm(false);
     setManagerData({ name: "", start_date: "" });
+    setManagerInfo({ ad_manager_name: "", start_date: "" });
     setError(null);
   };
 
@@ -372,6 +380,8 @@ const Dashboard = ({ openEconomics, openMissing }) => {
       if (resp.ok) {
         alert("Рекламный менеджер обновлен");
         fetchData();
+        fetchManagerInfo(selectedImt);
+        setShowManagerForm(false);
       }
     } catch (e) {
       console.error("Failed to update manager", e);
@@ -451,6 +461,25 @@ const Dashboard = ({ openEconomics, openMissing }) => {
       }
     } catch (error) {
       console.error("Error fetching purchase batches:", error);
+    }
+  };
+
+  const fetchManagerInfo = async (imtId) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/manager_info?imt_id=${imtId}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setManagerInfo({
+          ad_manager_name: data.ad_manager_name || "",
+          start_date: data.start_date || "",
+        });
+      } else {
+        setManagerInfo({ ad_manager_name: "", start_date: "" });
+      }
+    } catch (error) {
+      console.error("Error fetching manager info:", error);
     }
   };
 
@@ -999,41 +1028,57 @@ const Dashboard = ({ openEconomics, openMissing }) => {
               {/* ad manager section */}
               <div className="mt-8 border-t pt-4">
                 <h4 className="font-semibold mb-2">Рекламный менеджер</h4>
-                <label className="inline-flex items-center mb-2">
-                  <input
-                    type="checkbox"
-                    checked={showManagerForm}
-                    onChange={(e) => setShowManagerForm(e.target.checked)}
-                    className="mr-2"
-                  />
-                  <span>Указать менеджера</span>
-                </label>
-                {showManagerForm && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Имя"
-                      value={managerData.name}
-                      onChange={(e) =>
-                        setManagerData((p) => ({ ...p, name: e.target.value }))
-                      }
-                      className="border p-2 rounded-md"
-                    />
-                    <input
-                      type="date"
-                      value={managerData.start_date || startDate}
-                      onChange={(e) =>
-                        setManagerData((p) => ({ ...p, start_date: e.target.value }))
-                      }
-                      className="border p-2 rounded-md"
-                    />
+                {managerInfo.ad_manager_name && managerInfo.ad_manager_name !== "0" && !showManagerForm ? (
+                  <div>
+                    <p className="mb-2">
+                      На ведении у менеджера {managerInfo.ad_manager_name} c {managerInfo.start_date}
+                    </p>
                     <button
-                      onClick={() => submitAdManager()}
+                      onClick={() => setShowManagerForm(true)}
                       className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
                     >
-                      Сохранить менеджера
+                      Изменить менеджера
                     </button>
                   </div>
+                ) : (
+                  <>
+                    <label className="inline-flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={showManagerForm}
+                        onChange={(e) => setShowManagerForm(e.target.checked)}
+                        className="mr-2"
+                      />
+                      <span>Указать менеджера</span>
+                    </label>
+                    {showManagerForm && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Имя"
+                          value={managerData.name}
+                          onChange={(e) =>
+                            setManagerData((p) => ({ ...p, name: e.target.value }))
+                          }
+                          className="border p-2 rounded-md"
+                        />
+                        <input
+                          type="date"
+                          value={managerData.start_date || startDate}
+                          onChange={(e) =>
+                            setManagerData((p) => ({ ...p, start_date: e.target.value }))
+                          }
+                          className="border p-2 rounded-md"
+                        />
+                        <button
+                          onClick={() => submitAdManager()}
+                          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
+                          Сохранить менеджера
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
                 </div>
