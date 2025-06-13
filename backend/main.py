@@ -621,7 +621,7 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
                 SELECT "vendorCode", purchase_price, delivery_to_warehouse,
                        wb_commission_rub, wb_logistics, tax_rub, packaging,
                        fuel, gift, defect_percent, real_defect_percent,
-                       ad_manager_name, date
+                       ad_manager_name, date, actual_discounted_price
                 FROM sales
                 WHERE "vendorCode" = %s
                 ORDER BY date DESC
@@ -633,7 +633,7 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
         if df.empty:
             raise HTTPException(status_code=404, detail="No data for vendor code")
         df["profit_per_item"] = (
-            df["real_defect_percent"]
+            df["actual_discounted_price"]
             - df["purchase_price"]
             - df["delivery_to_warehouse"]
             - df["wb_commission_rub"]
@@ -659,7 +659,7 @@ async def get_latest_costs_all():
         query = """
                 SELECT DISTINCT ON ("vendorCode") "vendorCode", purchase_price, delivery_to_warehouse,
                        wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift,
-                       defect_percent, real_defect_percent, ad_manager_name, date
+                       defect_percent, real_defect_percent, ad_manager_name, date, actual_discounted_price
                 FROM sales
                 ORDER BY "vendorCode", date DESC
                 """
@@ -667,7 +667,7 @@ async def get_latest_costs_all():
         df.columns = df.columns.str.lower()
         df = df.rename(columns={"vendorcode": "vendor_code"})
         df["profit_per_item"] = (
-            df["real_defect_percent"]
+            df["actual_discounted_price"]
             - df["purchase_price"]
             - df["delivery_to_warehouse"]
             - df["wb_commission_rub"]

@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import { DataGrid } from "@mui/x-data-grid";
+import { Button } from "@mui/material";
 
 const fields = [
   "purchase_price",
@@ -14,61 +16,24 @@ const fields = [
 ];
 
 const UnitEconomics = ({ goBack }) => {
-  const tableRef = useRef(null);
-  const table = useRef(null);
-  const [data, setData] = useState([]);
+  const [rows, setRows] = useState([]);
   const [filterMissing, setFilterMissing] = useState(false);
 
   useEffect(() => {
     fetch("http://localhost:8000/api/latest_costs_all")
       .then((r) => r.json())
-      .then((d) => setData(d.map((row) => ({ ...row, start_date: "", end_date: "" }))))
+      .then((d) =>
+        setRows(
+          d.map((row) => ({ id: row.vendor_code, ...row, start_date: "", end_date: "" }))
+        )
+      )
       .catch((err) => console.error("Failed to fetch costs", err));
   }, []);
 
-  useEffect(() => {
-    if (!tableRef.current) return;
-    const filtered = filterMissing
-      ? data.filter((item) =>
-          fields.some((f) => !item[f] || item[f] === 0)
-        )
-      : data;
-
-    if (table.current) {
-      table.current.setData(filtered);
-      return;
-    }
-
-    table.current = new Tabulator(tableRef.current, {
-      data: filtered,
-      layout: "fitColumns",
-      height: "500px",
-      columns: [
-        { title: "Артикул", field: "vendor_code", headerFilter: "input", width: 120 },
-        { title: "profit_per_item", field: "profit_per_item", sorter: "number" },
-        ...fields.map((f) => ({ title: f, field: f, editor: "input", sorter: "number" })),
-        {
-          title: "Дата начала",
-          field: "start_date",
-          editor: "input",
-          editorParams: { elementAttributes: { type: "date" } },
-        },
-        {
-          title: "Дата конца",
-          field: "end_date",
-          editor: "input",
-          editorParams: { elementAttributes: { type: "date" } },
-        },
-        {
-          formatter: "button",
-          title: "",
-          width: 120,
-          formatterParams: { label: "Сохранить" },
-          cellClick: (e, cell) => saveRow(cell.getRow().getData()),
-        },
-      ],
-    });
-  }, [data, filterMissing]);
+  const handleCellEditCommit = (params) => {
+    const { id, field, value } = params;
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  };
 
   const saveRow = async (row) => {
     const payload = {
@@ -95,14 +60,34 @@ const UnitEconomics = ({ goBack }) => {
     }
   };
 
+  const columns = [
+    { field: "vendor_code", headerName: "Артикул", width: 120 },
+    { field: "profit_per_item", headerName: "profit_per_item", type: "number", width: 150 },
+    ...fields.map((f) => ({ field: f, headerName: f, type: "number", editable: true, width: 150 })),
+    { field: "start_date", headerName: "Дата начала", editable: true, width: 130 },
+    { field: "end_date", headerName: "Дата конца", editable: true, width: 130 },
+    {
+      field: "actions",
+      headerName: "",
+      sortable: false,
+      width: 130,
+      renderCell: (params) => (
+        <Button variant="outlined" size="small" onClick={() => saveRow(params.row)}>
+          Сохранить
+        </Button>
+      ),
+    },
+  ];
+
+  const displayedRows = filterMissing
+    ? rows.filter((item) => fields.some((f) => !item[f] || item[f] === 0))
+    : rows;
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Данные Юнит Экономики</h1>
-        <button
-          onClick={goBack}
-          className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-        >
+        <button onClick={goBack} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
           Назад
         </button>
       </div>
@@ -115,7 +100,14 @@ const UnitEconomics = ({ goBack }) => {
         />
         Показать только незаполненные
       </label>
-      <div ref={tableRef} className="overflow-x-auto" />
+      <div style={{ height: 500, width: "100%" }}>
+        <DataGrid
+          rows={displayedRows}
+          columns={columns}
+          onCellEditCommit={handleCellEditCommit}
+          density="compact"
+        />
+      </div>
     </div>
   );
 };
