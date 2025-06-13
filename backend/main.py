@@ -18,6 +18,28 @@ DB_URL = os.getenv(
     "postgresql://postgres:postgres@localhost:5432/wildberries",
 )
 
+
+def ensure_real_defect_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
+        conn.commit()
+        cur.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+ensure_real_defect_column()
+
 # --- Telegram Bot API Настройки ---
 # ⚠️ ОБЯЗАТЕЛЬНО УСТАНОВИТЕ ЭТИ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ НА ВАШЕМ СЕРВЕРЕ!
 # Пример: export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
@@ -467,6 +489,7 @@ class LatestCostsResponse(BaseModel):
     fuel: float
     gift: float
     defect_percent: float
+    real_defect_percent: float
 
 
 class MissingCostEntry(BaseModel):
@@ -559,7 +582,7 @@ async def get_latest_costs(vendor_code: str = Query(..., description="Vendor cod
         query = """
                 SELECT "vendorCode", purchase_price, delivery_to_warehouse,
                        wb_commission_rub, wb_logistics, tax_rub, packaging,
-                       fuel, gift, defect_percent, date
+                       fuel, gift, defect_percent, real_defect_percent, date
                 FROM sales
                 WHERE "vendorCode" = %s
                 ORDER BY date DESC
@@ -584,7 +607,7 @@ async def get_latest_costs_all():
         conn = psycopg2.connect(DB_URL)
         query = """
                 SELECT DISTINCT ON ("vendorCode") "vendorCode", purchase_price, delivery_to_warehouse,
-                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, date
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift, defect_percent, real_defect_percent, date
                 FROM sales
                 ORDER BY "vendorCode", date DESC
                 """
@@ -622,7 +645,8 @@ def get_missing_costs(
                         tax_rub IS NULL OR tax_rub = 0 OR
                         packaging IS NULL OR packaging = 0 OR
                         fuel IS NULL OR fuel = 0 OR
-                        gift IS NULL OR gift = 0
+                        gift IS NULL OR gift = 0 OR
+                        real_defect_percent IS NULL OR real_defect_percent = 0
                       )
                 ORDER BY "vendorCode", date
                 """
@@ -742,7 +766,7 @@ class CostUpdate(BaseModel):
     packaging: Optional[float] = None
     fuel: Optional[float] = None
     gift: Optional[float] = None
-    defect_percent: Optional[float] = None
+    real_defect_percent: Optional[float] = None
 
 
 @app.post("/api/update_costs")
@@ -762,7 +786,7 @@ def update_costs(update: CostUpdate):
         updatable_fields = [
             "purchase_price",
             "delivery_to_warehouse", "wb_commission_rub",
-            "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent"
+            "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "real_defect_percent"
         ]
 
         for field in updatable_fields:
@@ -790,6 +814,24 @@ def update_costs(update: CostUpdate):
                 params.append(update.end_date.strftime('%Y-%m-%d'))
             cursor.execute(query_sales_update, values_to_update_sales + params)
             updated_rows_sales = cursor.rowcount
+
+            if update.real_defect_percent is not None and not (
+                    isinstance(update.real_defect_percent, float) and np.isnan(update.real_defect_percent)):
+                query_def = (
+                    "UPDATE sales SET \"real_defect_percent\" = %s, "
+                    "\"defect_percent\" = COALESCE(\"actual_discounted_price\",0)/100 * %s "
+                    "WHERE \"vendorCode\" = %s AND date >= %s"
+                )
+                params_def = [
+                    update.real_defect_percent,
+                    update.real_defect_percent,
+                    update.vendorcode,
+                    update.start_date.strftime('%Y-%m-%d'),
+                ]
+                if update.end_date:
+                    query_def += " AND date <= %s"
+                    params_def.append(update.end_date.strftime('%Y-%m-%d'))
+                cursor.execute(query_def, params_def)
 
             # Пересчитываем cost_price и total_profit в таблице sales
             query_recalc = (

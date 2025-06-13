@@ -21,6 +21,9 @@ DB_URL = os.getenv(
 
 tax_percent = 12 # Процент налога, можно сделать его динамическим, если потребуется
 
+# Значение процента брака, используемое для новых записей в sales
+peremennaya_real_defect_percent = 2
+
 # 🕛 Даты для выборки
 glebas = 1 # Количество дней назад для yesterday
 yesterday = (datetime.utcnow() - timedelta(glebas)).date().isoformat()
@@ -325,6 +328,8 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                        REAL,
                        "gift"
                        REAL,
+                       "real_defect_percent"
+                       REAL,
                        "defect_percent"
                        REAL,
                        "cost_price"
@@ -353,12 +358,18 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                    """)
     conn.commit()
 
+    # Ensure new column for defect percent exists and has default value
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
+    conn.commit()
+    cursor.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
+    conn.commit()
+
     # 📦 Получение справочной информации из самой свежей записи таблицы sales
     cursor.execute(
         """
         SELECT DISTINCT ON ("nm_ID") "nm_ID", brand, "subjectName", purchase_price,
                delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
-               defect_percent
+               real_defect_percent
         FROM sales
         ORDER BY "nm_ID", "date" DESC
         """
@@ -374,7 +385,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
             "packaging": row[6] or 0,
             "fuel": row[7] or 0,
             "gift": row[8] or 0,
-            "defect_percent": row[9] or 0,
+            "real_defect_percent": row[9] or peremennaya_real_defect_percent,
             # 'cost_price', 'profit_per_item', 'wb_commission_rub', 'tax_rub', 'commission_percent'
             # теперь будут рассчитаны
         } for row in card_details_raw
@@ -447,22 +458,23 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
             packaging = card_details.get(nmID, {}).get("packaging", 0)
             fuel = card_details.get(nmID, {}).get("fuel", 0)
             gift = card_details.get(nmID, {}).get("gift", 0)
-            defect_percent = card_details.get(nmID, {}).get("defect_percent", 0)
+            real_defect_percent = card_details.get(nmID, {}).get(
+                "real_defect_percent", peremennaya_real_defect_percent
+            )
+            defect_percent = actual_price / 100 * real_defect_percent
 
             # Формула себестоимости с учетом новых рассчитанных значений
             calculated_cost_price = (
-                purchase_price +
-                delivery_to_warehouse +
-                calculated_wb_commission_rub + # Используем рассчитанную комиссию
-                wb_logistics +
-                calculated_tax_rub + # Используем рассчитанный налог
-                packaging +
-                fuel +
-                gift
+                purchase_price
+                + delivery_to_warehouse
+                + calculated_wb_commission_rub
+                + wb_logistics
+                + calculated_tax_rub
+                + packaging
+                + fuel
+                + gift
+                + defect_percent
             )
-            # Если defect_percent - это процент от закупочной цены, добавьте:
-            if defect_percent > 0:
-                 calculated_cost_price += (purchase_price * (defect_percent / 100))
 
 
             # === Пересчет profit_per_item и total_profit ===
@@ -495,6 +507,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "packaging": packaging,
                 "fuel": fuel,
                 "gift": gift,
+                "real_defect_percent": real_defect_percent,
                 "defect_percent": defect_percent,
             }
 
@@ -663,7 +676,7 @@ def ensure_columns_exist(conn, table_name, data_dict):
                 "ordersSumRub", "buyoutsSumRub", "buyoutPercent", "addToCartConversion",
                 "cartToOrderConversion", "salePrice", "purchase_price", "delivery_to_warehouse",
                 "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift",
-                "defect_percent", "cost_price", "profit_per_item", "commission_percent"
+                "defect_percent", "real_defect_percent", "cost_price", "profit_per_item", "commission_percent"
             ]:
                 column_type = "REAL"
             elif key in [

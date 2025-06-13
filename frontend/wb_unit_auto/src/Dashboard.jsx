@@ -218,7 +218,7 @@ const Dashboard = ({ openEconomics, openMissing }) => {
             packaging: firstVendorData.packaging || 0,
             fuel: firstVendorData.fuel || 0,
             gift: firstVendorData.gift || 0,
-            defect_percent: firstVendorData.defect_percent || 0,
+            real_defect_percent: firstVendorData.real_defect_percent || 0,
             start_date: startDate,
           });
           fetchLatestCost(firstVendorData.vendorcode);
@@ -395,7 +395,7 @@ const Dashboard = ({ openEconomics, openMissing }) => {
           packaging: data.packaging || 0,
           fuel: data.fuel || 0,
           gift: data.gift || 0,
-          defect_percent: data.defect_percent || 0,
+          real_defect_percent: data.real_defect_percent || 0,
         }));
       }
     } catch (error) {
@@ -919,9 +919,9 @@ const Dashboard = ({ openEconomics, openMissing }) => {
                       Процент брака (%):
                       <input
                         type="number"
-                        name="defect_percent"
+                        name="real_defect_percent"
                         className="border p-2 rounded-md w-full mt-1"
-                        value={editData.defect_percent || ""}
+                        value={editData.real_defect_percent || ""}
                         onChange={handleEditChange}
                         min="0"
                         step="0.01"
