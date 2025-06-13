@@ -57,8 +57,53 @@ def ensure_ad_manager_column():
             conn.close()
 
 
+def ensure_card_changes_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
+        conn.commit()
+        cur.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def ensure_card_change_options_table():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_change_options (
+                id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE
+            );
+            """
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 ensure_real_defect_column()
 ensure_ad_manager_column()
+ensure_card_changes_column()
+ensure_card_change_options_table()
 
 # --- Telegram Bot API Настройки ---
 # ⚠️ ОБЯЗАТЕЛЬНО УСТАНОВИТЕ ЭТИ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ НА ВАШЕМ СЕРВЕРЕ!
@@ -303,6 +348,38 @@ def get_sales_grouped_detailed_range(
     finally:
         if conn:
             conn.close()
+
+
+@app.get("/api/sales_filtered_range")
+def get_sales_filtered_range(
+        start_date: str,
+        end_date: str,
+        filter_field: str,
+        filter_value: str,
+):
+    conn = psycopg2.connect(DB_URL)
+    query = (
+        "SELECT * FROM sales WHERE date BETWEEN %s AND %s AND "
+        f'"{filter_field}" = %s'
+    )
+    df = pd.read_sql_query(query, conn, params=(start_date, end_date, filter_value))
+    conn.close()
+    if df.empty:
+        return {"data": [], "total_profit": 0}
+    df = df.fillna(0)
+    df["cost_price"] = (
+            df["purchase_price"] + df["delivery_to_warehouse"] + df["wb_commission_rub"] +
+            df["wb_logistics"] + df["tax_rub"] + df["packaging"] + df["fuel"] + df["gift"] + df["defect_percent"]
+    )
+    df["orderscount"] = df["orderscount"].astype(int)
+    df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+    grouped = df.groupby("imtid").agg({
+        "orderscount": "sum",
+        "ad_spend": "sum",
+        "profit": "sum"
+    }).reset_index()
+    total_profit = round(grouped["profit"].sum(), 2)
+    return {"data": grouped.to_dict(orient="records"), "total_profit": total_profit}
 
 
 ### Продажи по конкретной imtID, сгруппированные по vendorCode
@@ -751,6 +828,17 @@ class AdManagerUpdate(BaseModel):
     start_date: date
 
 
+class CardChangeOption(BaseModel):
+    name: str
+
+
+class CardChangeUpdate(BaseModel):
+    vendorcode: str
+    card_change: str
+    start_date: date
+    end_date: Optional[date] = None
+
+
 # --- НОВЫЙ Эндпоинт для создания закупочной партии ---
 @app.post("/api/purchase_batches")
 async def create_purchase_batch(batch: PurchaseBatchCreate):
@@ -849,6 +937,65 @@ def update_ad_manager(update: AdManagerUpdate):
             cur.close()
         if conn:
             conn.close()
+
+
+@app.get("/api/card_change_options")
+def get_card_change_options():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM card_change_options ORDER BY id")
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
+@app.post("/api/card_change_options")
+def add_card_change_option(opt: CardChangeOption):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO card_change_options (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+            (opt.name,),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.delete("/api/card_change_options")
+def delete_card_change_option(name: str):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM card_change_options WHERE name = %s", (name,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.post("/api/update_card_change")
+def update_card_change(update: CardChangeUpdate):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        query = "UPDATE sales SET \"card_changes\" = %s WHERE \"vendorCode\" = %s AND date >= %s"
+        params = [update.card_change, update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+        if update.end_date:
+            query += " AND date <= %s"
+            params.append(update.end_date.strftime('%Y-%m-%d'))
+        cur.execute(query, params)
+        affected = cur.rowcount
+        conn.commit()
+        return {"updated_rows": affected}
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.get("/api/manager_info")
