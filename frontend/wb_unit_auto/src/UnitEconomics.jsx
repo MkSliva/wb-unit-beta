@@ -68,16 +68,22 @@ const UnitEconomics = ({ goBack }) => {
   const sortedRows = React.useMemo(() => {
     if (!sortField) return displayedRows;
     return [...displayedRows].sort((a, b) => {
+      const aNum = parseFloat(a[sortField]);
+      const bNum = parseFloat(b[sortField]);
+
       let aVal = a[sortField];
       let bVal = b[sortField];
-      const aNum = parseFloat(aVal);
-      const bNum = parseFloat(bVal);
+
       if (!isNaN(aNum) && !isNaN(bNum)) {
         aVal = aNum;
         bVal = bNum;
+      } else {
+        aVal = (aVal ?? "").toString().toLowerCase();
+        bVal = (bVal ?? "").toString().toLowerCase();
       }
+
       if (aVal === bVal) return 0;
-      return aVal > bVal ? (sortAsc ? 1 : -1) : sortAsc ? -1 : 1;
+      return sortAsc ? (aVal > bVal ? 1 : -1) : aVal > bVal ? -1 : 1;
     });
   }, [displayedRows, sortField, sortAsc]);
 
@@ -111,10 +117,29 @@ const UnitEconomics = ({ goBack }) => {
         <table className="min-w-full text-sm border border-gray-300">
           <thead className="sticky top-0 bg-gray-100">
             <tr>
-              <th className="p-1 border" onClick={() => handleSort('vendor_code')}>Артикул</th>
-              <th className="p-1 border" onClick={() => handleSort('profit_per_item')}>profit_per_item</th>
+              <th
+                className="p-1 border cursor-pointer"
+                onClick={() => handleSort('vendor_code')}
+              >
+                Артикул
+                {sortField === 'vendor_code' && (sortAsc ? ' ▲' : ' ▼')}
+              </th>
+              <th
+                className="p-1 border cursor-pointer"
+                onClick={() => handleSort('profit_per_item')}
+              >
+                profit_per_item
+                {sortField === 'profit_per_item' && (sortAsc ? ' ▲' : ' ▼')}
+              </th>
               {fields.map((f) => (
-                <th key={f} className="p-1 border" onClick={() => handleSort(f)}>{f}</th>
+                <th
+                  key={f}
+                  className="p-1 border cursor-pointer"
+                  onClick={() => handleSort(f)}
+                >
+                  {f}
+                  {sortField === f && (sortAsc ? ' ▲' : ' ▼')}
+                </th>
               ))}
               <th className="p-1 border" onClick={() => handleSort('start_date')}>Дата начала</th>
               <th className="p-1 border" onClick={() => handleSort('end_date')}>Дата конца</th>
