@@ -257,7 +257,9 @@ def get_sales_grouped_detailed_range(
 
         df_sorted = df.sort_values(["imtid", "date"])
         latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
-            lambda x: next((v for v in reversed(x) if v not in [None, '', '0']), '')
+            lambda x: next(
+                (v for v in reversed(list(x)) if v not in [None, "", "0"]), ""
+            )
         )
 
         max_sales_per_vendorcode = df.loc[df.groupby('imtid')['orderscount'].idxmax()]
