@@ -8,8 +8,8 @@ const filterTypes = [
 
 const CardComparison = ({ goBack }) => {
   const [groups, setGroups] = useState([
-    { type: "ad_manager_name", value: "" },
-    { type: "card_changes", value: "" },
+    { type: "", value: "" },
+    { type: "", value: "" },
   ]);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -34,11 +34,17 @@ const CardComparison = ({ goBack }) => {
   }, []);
 
   const addGroup = () => {
-    setGroups((p) => [...p, { type: "ad_manager_name", value: "" }]);
+    setGroups((p) => [...p, { type: "", value: "" }]);
   };
 
   const handleChange = (idx, field, val) => {
-    setGroups((p) => p.map((g, i) => (i === idx ? { ...g, [field]: val } : g)));
+    setGroups((p) =>
+      p.map((g, i) =>
+        i === idx
+          ? { ...g, [field]: val, ...(field === "type" ? { value: "" } : {}) }
+          : g
+      )
+    );
   };
 
   const fetchData = async () => {
@@ -92,7 +98,7 @@ const CardComparison = ({ goBack }) => {
       </div>
 
       <div className="space-y-4 mb-6">
-        <div className="flex flex-wrap gap-4 bg-gray-50 p-4 rounded shadow">
+        <div className="flex flex-wrap gap-4 bg-gray-50 p-4 rounded shadow items-end">
           <div>
             <label className="block text-sm mb-1">Начальная дата</label>
             <input
@@ -111,46 +117,26 @@ const CardComparison = ({ goBack }) => {
               className="border p-1 rounded w-full"
             />
           </div>
-          {groups.slice(0, 2).map((g, idx) => (
+          {groups.map((g, idx) => (
             <div key={idx} className="flex flex-col">
-              <label className="block text-sm mb-1">{labelFor(g.type)}</label>
+              <label className="block text-sm mb-1">Параметр</label>
               <select
-                value={g.value}
-                onChange={(e) => handleChange(idx, "value", e.target.value)}
-                className="border p-1 rounded w-full"
+                value={g.type}
+                onChange={(e) => handleChange(idx, "type", e.target.value)}
+                className="border p-1 rounded w-full mb-2"
               >
                 <option value="">Выберите</option>
-                {g.type === "ad_manager_name" &&
-                  managerOpts.map((m) => (
-                    <option key={m} value={m}>
-                      {m === "0" ? "Без менеджера" : m}
-                    </option>
-                  ))}
-                {g.type === "card_changes" &&
-                  changeOpts.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                {g.type === "brand" &&
-                  brandOpts.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
+                {filterTypes.map((ft) => (
+                  <option key={ft.value} value={ft.value}>
+                    {ft.label}
+                  </option>
+                ))}
               </select>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-4 bg-gray-50 p-4 rounded shadow items-end">
-          {groups.slice(2).map((g, idx) => (
-            <div key={idx + 2} className="flex flex-col">
-              <label className="block text-sm mb-1">{labelFor(g.type)}</label>
+              <label className="block text-sm mb-1">{labelFor(g.type) || "Значение"}</label>
               {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
                 <select
                   value={g.value}
-                  onChange={(e) => handleChange(idx + 2, "value", e.target.value)}
+                  onChange={(e) => handleChange(idx, "value", e.target.value)}
                   className="border p-1 rounded w-full"
                 >
                   <option value="">Выберите</option>
@@ -177,7 +163,7 @@ const CardComparison = ({ goBack }) => {
                 <input
                   type="text"
                   value={g.value}
-                  onChange={(e) => handleChange(idx + 2, "value", e.target.value)}
+                  onChange={(e) => handleChange(idx, "value", e.target.value)}
                   className="border p-1 rounded w-full"
                 />
               )}
