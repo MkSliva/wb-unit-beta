@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => {
+const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare, openProblems }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalProfit, setTotalProfit] = useState(0);
@@ -686,6 +686,38 @@ const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare }) => 
           >
             Посмотреть
           </button>
+        </div>
+      )}
+
+      {groupedSales.length > 0 && (
+        <div className="bg-yellow-100 text-yellow-800 p-4 mb-4">
+          <p className="font-semibold mb-2">Внимание! Проблемные карточки!</p>
+          <div className="space-y-1">
+            <button
+              onClick={() =>
+                openProblems("negative_profit", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Отрицательная прибыль - посмотреть
+            </button>
+            <button
+              onClick={() =>
+                openProblems("low_margin", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Низкая маржинальность - посмотреть
+            </button>
+            <button
+              onClick={() =>
+                openProblems("no_orders", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Отсутствие заказов - посмотреть
+            </button>
+          </div>
         </div>
       )}
 

@@ -1265,3 +1265,77 @@ async def check_purchase_batches():
         if conn:
             conn.close()
 
+
+@app.get("/api/problem_cards")
+def get_problem_cards(problem_type: str, start_date: str = Query(...), end_date: str = Query(...)):
+    """Return cards with negative profit, low margin, or no orders."""
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT "imtID", "vendorCode", "ordersCount", "ad_spend",
+                       "actual_discounted_price", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel,
+                       gift, defect_percent, ad_manager_name, date
+                FROM sales
+                WHERE date BETWEEN %s AND %s
+                """
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"])
+        if df.empty:
+            return {"data": []}
+        df = df.fillna(0)
+        df = update_sales_purchase_prices(df, conn)
+        df["cost_price"] = (
+            df["purchase_price"]
+            + df["delivery_to_warehouse"]
+            + df["wb_commission_rub"]
+            + df["wb_logistics"]
+            + df["tax_rub"]
+            + df["packaging"]
+            + df["fuel"]
+            + df["gift"]
+            + df["defect_percent"]
+        )
+        df["orderscount"] = df["orderscount"].astype(int)
+        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
+        df["investment_total"] = (
+            df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] + df["fuel"] + df["gift"]
+        ) * df["orderscount"]
+        grouped = df.groupby("imtid").agg({
+            "orderscount": "sum",
+            "ad_spend": "sum",
+            "profit": "sum",
+            "revenue": "sum",
+            "investment_total": "sum",
+        }).reset_index()
+        df_sorted = df.sort_values(["imtid", "date"])
+        latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
+            lambda x: next((v for v in reversed(list(x)) if v not in [None, "", "0"]), "")
+        )
+        grouped["vendorcodes"] = grouped["imtid"].apply(
+            lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
+        )
+        grouped["ad_manager_name"] = grouped["imtid"].map(latest_manager)
+        grouped["margin_percent"] = grouped.apply(
+            lambda row: (row["profit"] / row["investment_total"] * 100) if row["investment_total"] != 0 else 0,
+            axis=1,
+        )
+        if problem_type == "negative_profit":
+            grouped = grouped[grouped["profit"] < 0]
+        elif problem_type == "low_margin":
+            grouped = grouped[grouped["margin_percent"] < 10]
+        elif problem_type == "no_orders":
+            recent_start = pd.to_datetime(end_date) - pd.Timedelta(days=6)
+            recent = df[df["date"] >= recent_start]
+            rec_orders = recent.groupby("imtid")["orderscount"].sum()
+            no_orders_ids = rec_orders[rec_orders == 0].index
+            grouped = grouped[grouped["imtid"].isin(no_orders_ids)]
+        grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped = grouped.drop(columns=["investment_total", "revenue"])
+        return {"data": grouped.to_dict(orient="records")}
+    finally:
+        if conn:
+            conn.close()
