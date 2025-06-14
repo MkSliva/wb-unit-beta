@@ -16,7 +16,7 @@ const titles = {
   no_orders: "Отсутствие заказов",
 };
 
-const ProblemCards = ({ mode, startDate, endDate, goBack }) => {
+const ProblemCards = ({ mode, startDate, endDate, goBack, openImt }) => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
@@ -127,7 +127,14 @@ const ProblemCards = ({ mode, startDate, endDate, goBack }) => {
                 .filter((r) => !category || r.subjectname === category)
                 .map((row) => (
                 <tr key={row.imtid} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 whitespace-nowrap">{row.imtid}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    <button
+                      onClick={() => openImt(row.imtid)}
+                      className="text-indigo-600 hover:underline"
+                    >
+                      {row.imtid}
+                    </button>
+                  </td>
                   <td
                     className="px-4 py-2 whitespace-nowrap max-w-[200px] truncate"
                     title={row.vendorcodes}
