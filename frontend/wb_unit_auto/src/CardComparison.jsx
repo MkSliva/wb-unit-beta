@@ -77,8 +77,10 @@ const CardComparison = ({ goBack }) => {
     setResults(res);
   };
 
+  const labelFor = (type) => filterTypes.find((ft) => ft.value === type)?.label || type;
+
   return (
-    <div className="p-4 font-sans text-gray-800">
+    <div className="p-4 font-sans text-gray-800 text-base">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-xl font-semibold">Сравнение карточек</h1>
         <button
@@ -89,37 +91,33 @@ const CardComparison = ({ goBack }) => {
         </button>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <input
-          type="date"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-          className="border p-1 rounded"
-        />
-        <input
-          type="date"
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-          className="border p-1 rounded"
-        />
-        {groups.map((g, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <select
-              value={g.type}
-              onChange={(e) => handleChange(idx, "type", e.target.value)}
-              className="border p-1 rounded"
-            >
-              {filterTypes.map((ft) => (
-                <option key={ft.value} value={ft.value}>
-                  {ft.label}
-                </option>
-              ))}
-            </select>
-            {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
+      <div className="space-y-4 mb-6">
+        <div className="flex flex-wrap gap-4 bg-gray-50 p-4 rounded shadow">
+          <div>
+            <label className="block text-sm mb-1">Начальная дата</label>
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="border p-1 rounded w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Конечная дата</label>
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="border p-1 rounded w-full"
+            />
+          </div>
+          {groups.slice(0, 2).map((g, idx) => (
+            <div key={idx} className="flex flex-col">
+              <label className="block text-sm mb-1">{labelFor(g.type)}</label>
               <select
                 value={g.value}
                 onChange={(e) => handleChange(idx, "value", e.target.value)}
-                className="border p-1 rounded"
+                className="border p-1 rounded w-full"
               >
                 <option value="">Выберите</option>
                 {g.type === "ad_manager_name" &&
@@ -141,29 +139,64 @@ const CardComparison = ({ goBack }) => {
                     </option>
                   ))}
               </select>
-            ) : (
-              <input
-                type="text"
-                value={g.value}
-                onChange={(e) => handleChange(idx, "value", e.target.value)}
-                className="border p-1 rounded"
-              />
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={addGroup}
-          className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-sm"
-        >
-          <span className="mr-1">+</span> Добавить группу
-        </button>
-        <button
-          onClick={fetchData}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded"
-        >
-          Сравнить
-        </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-4 bg-gray-50 p-4 rounded shadow items-end">
+          {groups.slice(2).map((g, idx) => (
+            <div key={idx + 2} className="flex flex-col">
+              <label className="block text-sm mb-1">{labelFor(g.type)}</label>
+              {g.type === "ad_manager_name" || g.type === "card_changes" || g.type === "brand" ? (
+                <select
+                  value={g.value}
+                  onChange={(e) => handleChange(idx + 2, "value", e.target.value)}
+                  className="border p-1 rounded w-full"
+                >
+                  <option value="">Выберите</option>
+                  {g.type === "ad_manager_name" &&
+                    managerOpts.map((m) => (
+                      <option key={m} value={m}>
+                        {m === "0" ? "Без менеджера" : m}
+                      </option>
+                    ))}
+                  {g.type === "card_changes" &&
+                    changeOpts.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  {g.type === "brand" &&
+                    brandOpts.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={g.value}
+                  onChange={(e) => handleChange(idx + 2, "value", e.target.value)}
+                  className="border p-1 rounded w-full"
+                />
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addGroup}
+            className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-sm"
+          >
+            <span className="mr-1">+</span> Добавить группу
+          </button>
+          <button
+            onClick={fetchData}
+            className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded shadow"
+          >
+            Сравнить
+          </button>
+        </div>
       </div>
 
       <hr className="my-4 border-gray-300" />
