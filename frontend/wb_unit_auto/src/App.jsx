@@ -5,11 +5,13 @@ import MissingCosts from "./MissingCosts";
 import CardChanges from "./CardChanges";
 import CardComparison from "./CardComparison";
 import ProblemCards from "./ProblemCards";
+import ImtDetails from "./ImtDetails";
 
 function App() {
   const [page, setPage] = useState("dashboard");
   const [range, setRange] = useState({ start: "", end: "" });
   const [problemMode, setProblemMode] = useState(null);
+  const [imtInfo, setImtInfo] = useState({ id: null, start: "", end: "" });
 
   return (
     <div>
@@ -51,6 +53,18 @@ function App() {
           startDate={range.start}
           endDate={range.end}
           goBack={() => setPage("dashboard")}
+          openImt={(id) => {
+            setImtInfo({ id, start: range.start, end: range.end });
+            setPage("imt");
+          }}
+        />
+      )}
+      {page === "imt" && (
+        <ImtDetails
+          imtId={imtInfo.id}
+          startDate={imtInfo.start}
+          endDate={imtInfo.end}
+          goBack={() => setPage("problem")}
         />
       )}
     </div>
