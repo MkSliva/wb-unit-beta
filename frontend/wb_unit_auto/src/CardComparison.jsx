@@ -78,13 +78,18 @@ const CardComparison = ({ goBack }) => {
   };
 
   return (
-    <div className="p-4">
-      <div className="flex justify-between mb-4">
-        <h1 className="text-xl font-bold">Сравнение карточек</h1>
-        <button onClick={goBack} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Назад</button>
+    <div className="p-4 font-sans text-gray-800">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-xl font-semibold">Сравнение карточек</h1>
+        <button
+          onClick={goBack}
+          className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+        >
+          Назад
+        </button>
       </div>
 
-      <div className="mb-4 flex space-x-2">
+      <div className="mb-4 flex flex-wrap items-end gap-2">
         <input
           type="date"
           value={start}
@@ -97,11 +102,8 @@ const CardComparison = ({ goBack }) => {
           onChange={(e) => setEnd(e.target.value)}
           className="border p-1 rounded"
         />
-      </div>
-
-      <div className="space-y-2">
         {groups.map((g, idx) => (
-          <div key={idx} className="flex space-x-2 items-center">
+          <div key={idx} className="flex items-center gap-2">
             <select
               value={g.type}
               onChange={(e) => handleChange(idx, "type", e.target.value)}
@@ -149,20 +151,22 @@ const CardComparison = ({ goBack }) => {
             )}
           </div>
         ))}
-      </div>
-
-      <button onClick={addGroup} className="mt-2 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">
-        + Добавить группу
-      </button>
-
-      <div className="mt-4">
+        <button
+          type="button"
+          onClick={addGroup}
+          className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-sm"
+        >
+          <span className="mr-1">+</span> Добавить группу
+        </button>
         <button
           onClick={fetchData}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded"
         >
           Сравнить
         </button>
       </div>
+
+      <hr className="my-4 border-gray-300" />
 
       {results.length > 0 && (
         <div className="mt-6 overflow-x-auto">
