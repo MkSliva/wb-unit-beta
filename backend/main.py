@@ -1267,7 +1267,12 @@ async def check_purchase_batches():
 
 
 @app.get("/api/problem_cards")
-def get_problem_cards(problem_type: str, start_date: str = Query(...), end_date: str = Query(...)):
+def get_problem_cards(
+    problem_type: str,
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    category: str = Query(None),
+):
     """Return cards with negative profit, low margin, or no orders."""
     conn = None
     try:
@@ -1276,7 +1281,7 @@ def get_problem_cards(problem_type: str, start_date: str = Query(...), end_date:
                 SELECT "imtID", "vendorCode", "ordersCount", "ad_spend",
                        "actual_discounted_price", purchase_price, delivery_to_warehouse,
                        wb_commission_rub, wb_logistics, tax_rub, packaging, fuel,
-                       gift, defect_percent, ad_manager_name, date
+                       gift, defect_percent, ad_manager_name, "subjectName", date
                 FROM sales
                 WHERE date BETWEEN %s AND %s
                 """
@@ -1315,10 +1320,14 @@ def get_problem_cards(problem_type: str, start_date: str = Query(...), end_date:
         latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
             lambda x: next((v for v in reversed(list(x)) if v not in [None, "", "0"]), "")
         )
+        latest_subject = df_sorted.groupby("imtid")["subjectname"].apply(
+            lambda x: next((v for v in reversed(list(x)) if v not in [None, "", "0"]), "")
+        )
         grouped["vendorcodes"] = grouped["imtid"].apply(
             lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
         )
         grouped["ad_manager_name"] = grouped["imtid"].map(latest_manager)
+        grouped["subjectname"] = grouped["imtid"].map(latest_subject)
         grouped["margin_percent"] = grouped.apply(
             lambda row: (row["profit"] / row["investment_total"] * 100) if row["investment_total"] != 0 else 0,
             axis=1,
@@ -1333,6 +1342,9 @@ def get_problem_cards(problem_type: str, start_date: str = Query(...), end_date:
             rec_orders = recent.groupby("imtid")["orderscount"].sum()
             no_orders_ids = rec_orders[rec_orders == 0].index
             grouped = grouped[grouped["imtid"].isin(no_orders_ids)]
+
+        if category:
+            grouped = grouped[grouped["subjectname"] == category]
         grouped = grouped.rename(columns={"profit": "total_profit"})
         grouped = grouped.drop(columns=["investment_total", "revenue"])
         return {"data": grouped.to_dict(orient="records")}
