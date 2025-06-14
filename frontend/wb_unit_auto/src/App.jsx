@@ -4,10 +4,12 @@ import UnitEconomics from "./UnitEconomics";
 import MissingCosts from "./MissingCosts";
 import CardChanges from "./CardChanges";
 import CardComparison from "./CardComparison";
+import ProblemCards from "./ProblemCards";
 
 function App() {
   const [page, setPage] = useState("dashboard");
   const [range, setRange] = useState({ start: "", end: "" });
+  const [problemMode, setProblemMode] = useState(null);
 
   return (
     <div>
@@ -19,6 +21,11 @@ function App() {
           openMissing={(r) => {
             setRange(r);
             setPage("missing");
+          }}
+          openProblems={(mode, r) => {
+            setRange(r);
+            setProblemMode(mode);
+            setPage("problem");
           }}
         />
       )}
@@ -37,6 +44,14 @@ function App() {
       )}
       {page === "compare" && (
         <CardComparison goBack={() => setPage("dashboard")} />
+      )}
+      {page === "problem" && (
+        <ProblemCards
+          mode={problemMode}
+          startDate={range.start}
+          endDate={range.end}
+          goBack={() => setPage("dashboard")}
+        />
       )}
     </div>
   );
