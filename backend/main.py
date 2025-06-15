@@ -18,6 +18,112 @@ DB_URL = os.getenv(
     "postgresql://postgres:postgres@localhost:5432/wildberries",
 )
 
+
+def ensure_real_defect_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
+        conn.commit()
+        cur.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def ensure_ad_manager_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "ad_manager_name" TEXT')
+        conn.commit()
+        cur.execute('UPDATE sales SET "ad_manager_name" = \'0\' WHERE "ad_manager_name" IS NULL')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def ensure_svikup_percent_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "svikup_percent" REAL')
+        conn.commit()
+        cur.execute('UPDATE sales SET "svikup_percent" = 91')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+def ensure_card_changes_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
+        conn.commit()
+        cur.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def ensure_card_change_options_table():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_change_options (
+                id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE
+            );
+            """
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+ensure_real_defect_column()
+ensure_ad_manager_column()
+ensure_card_changes_column()
+ensure_svikup_percent_column()
+ensure_card_change_options_table()
+
 # --- Telegram Bot API Настройки ---
 # ⚠️ ОБЯЗАТЕЛЬНО УСТАНОВИТЕ ЭТИ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ НА ВАШЕМ СЕРВЕРЕ!
 # Пример: export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
@@ -166,7 +272,7 @@ def get_sales_grouped_detailed_range(
                        "packaging", \
                        "fuel", \
                        "gift", \
-                       "defect_percent", date
+                       "defect_percent", "svikup_percent", ad_manager_name, date
                 FROM sales
                 WHERE date BETWEEN %s \
                   AND %s \
@@ -196,13 +302,29 @@ def get_sales_grouped_detailed_range(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
+
+        df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
+
+        df["investment_total"] = (
+                df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] +
+                df["fuel"] + df["gift"]
+        ) * df["orderscount"]
 
         grouped = df.groupby("imtid").agg({
             "orderscount": "sum",
             "ad_spend": "sum",
-            "profit": "sum"
+            "profit": "sum",
+            "revenue": "sum",
+            "investment_total": "sum"
         }).reset_index()
+
+        df_sorted = df.sort_values(["imtid", "date"])
+        latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
+            lambda x: next(
+                (v for v in reversed(list(x)) if v not in [None, "", "0"]), ""
+            )
+        )
 
         max_sales_per_vendorcode = df.loc[df.groupby('imtid')['orderscount'].idxmax()]
         # Выбираем только нужные столбцы и переименовываем vendorcode для ясности
@@ -217,18 +339,100 @@ def get_sales_grouped_detailed_range(
             lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
         )
 
+        grouped["ad_manager_name"] = grouped["imtid"].map(latest_manager)
+
+        total_revenue = grouped["revenue"].sum()
+        total_profit_sum = grouped["profit"].sum()
         grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped["revenue_percent"] = grouped["revenue"] / total_revenue * 100 if total_revenue != 0 else 0
+        grouped["profit_percent"] = grouped["total_profit"] / total_profit_sum * 100 if total_profit_sum != 0 else 0
+        grouped["margin_percent"] = grouped.apply(
+            lambda row: (row["total_profit"] / row["investment_total"] * 100)
+            if row["investment_total"] != 0 else 0,
+            axis=1,
+        )
+        grouped = grouped.drop(columns=["investment_total", "revenue"])
         total_profit = round(grouped["total_profit"].sum(), 2)
+        total_orders = int(df["orderscount"].sum())
+        total_ad_spend = round(df["ad_spend"].sum(), 2)
 
         return {
             "start_date": start_date,
             "end_date": end_date,
             "total_profit": total_profit,
+            "total_orders": total_orders,
+            "total_ad_spend": total_ad_spend,
             "data": grouped.to_dict(orient="records")
         }
     finally:
         if conn:
             conn.close()
+
+
+@app.get("/api/sales_filtered_range")
+def get_sales_filtered_range(
+        start_date: str,
+        end_date: str,
+        filter_field: str,
+        filter_value: str,
+):
+    conn = psycopg2.connect(DB_URL)
+    query = (
+        "SELECT * FROM sales WHERE date BETWEEN %s AND %s AND "
+        f'"{filter_field}" = %s'
+    )
+    df = pd.read_sql_query(query, conn, params=(start_date, end_date, filter_value))
+    conn.close()
+    df.columns = df.columns.str.lower()
+    if df.empty:
+        return {"data": [], "total_profit": 0}
+    df = df.fillna(0)
+    df["cost_price"] = (
+        df["purchase_price"]
+        + df["delivery_to_warehouse"]
+        + df["wb_commission_rub"]
+        + df["wb_logistics"]
+        + df["tax_rub"]
+        + df["packaging"]
+        + df["fuel"]
+        + df["gift"]
+        + df["defect_percent"]
+    )
+    df["orderscount"] = df["orderscount"].astype(int)
+    df["profit"] = (
+        (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+    ) * df.get("svikup_percent", 100) / 100
+    df["investment"] = (
+        df["purchase_price"]
+        + df["delivery_to_warehouse"]
+        + df["packaging"]
+        + df["fuel"]
+        + df["gift"]
+    ) * df["orderscount"]
+    add_to_cart_conv = round(df["addtocartconversion"].mean(), 2)
+    cart_to_order_conv = round(df["carttoorderconversion"].mean(), 2)
+    ad_ctr = round(df["ad_ctr"].mean(), 2)
+    ad_cpc = round(df["ad_cpc"].mean(), 2)
+    grouped = (
+        df.groupby("imtid")
+        .agg({"orderscount": "sum", "ad_spend": "sum", "profit": "sum", "investment": "sum"})
+        .reset_index()
+    )
+    total_profit = round(grouped["profit"].sum(), 2)
+    total_ad_spend = round(grouped["ad_spend"].sum(), 2)
+    total_investment = grouped["investment"].sum()
+    margin_percent = round(total_profit / total_investment * 100, 2) if total_investment else 0
+    grouped = grouped.drop(columns=["investment"])
+    return {
+        "data": grouped.to_dict(orient="records"),
+        "total_profit": total_profit,
+        "total_ad_spend": total_ad_spend,
+        "margin_percent": margin_percent,
+        "add_to_cart_conv": add_to_cart_conv,
+        "cart_to_order_conv": cart_to_order_conv,
+        "ad_ctr": ad_ctr,
+        "ad_cpc": ad_cpc,
+    }
 
 
 ### Продажи по конкретной imtID, сгруппированные по vendorCode
@@ -243,7 +447,7 @@ def get_sales_by_imt(
         conn = psycopg2.connect(DB_URL)
 
         query = """
-                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode"
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode", "svikup_percent"
                 FROM sales
                 WHERE "imtID" = %s \
                   AND date BETWEEN %s \
@@ -274,7 +478,7 @@ def get_sales_by_imt(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         grouped = df.groupby("vendorcode").agg({
             "orderscount": "sum",
@@ -318,7 +522,7 @@ def get_sales_by_imt_daily(
         conn = psycopg2.connect(DB_URL)
 
         query = """
-                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode"
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode", "svikup_percent"
                 FROM sales
                 WHERE "imtID" = %s \
                   AND date BETWEEN %s \
@@ -349,7 +553,7 @@ def get_sales_by_imt_daily(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         grouped = df.groupby("date").agg({
             "orderscount": "sum",
@@ -373,10 +577,92 @@ def get_sales_by_imt_daily(
             conn.close()
 
 
+@app.get("/api/sales_overall_daily")
+def get_sales_overall_daily(
+        start_date: str = Query(..., description="Start date в формате YYYY-MM-DD"),
+        end_date: str = Query(..., description="End date в формате YYYY-MM-DD")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+
+        query = """
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price",
+                       "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub",
+                       "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price",
+                       "vendorCode", "svikup_percent"
+                FROM sales
+                WHERE date BETWEEN %s
+                  AND %s
+                ORDER BY date ASC
+                """
+
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"])
+
+        if df.empty:
+            return {
+                "message": f"No data between {start_date} and {end_date}",
+                "data": []
+            }
+
+        df = df.fillna(0)
+
+        df = update_sales_purchase_prices(df, conn)
+
+        df["cost_price"] = (
+                df["purchase_price"] + df["delivery_to_warehouse"] + df["wb_commission_rub"] +
+                df["wb_logistics"] + df["tax_rub"] + df["packaging"] +
+                df["fuel"] + df["gift"] + df["defect_percent"]
+        )
+        df["orderscount"] = df["orderscount"].astype(int)
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
+
+        grouped = df.groupby("date").agg({
+            "orderscount": "sum",
+            "ad_spend": "sum",
+            "profit": "sum"
+        }).reset_index()
+
+        grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped["date"] = grouped["date"].dt.strftime("%Y-%m-%d")
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "data": grouped.to_dict(orient="records")
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
 # --- НОВАЯ Pydantic модель для ответа истории закупочных цен по дням ---
 class PurchasePriceHistoryDailyResponse(BaseModel):
     date: date
     purchase_price: float
+
+
+class LatestCostsResponse(BaseModel):
+    vendor_code: Optional[str] = None
+    date: date
+    purchase_price: float
+    delivery_to_warehouse: float
+    wb_commission_rub: float
+    wb_logistics: float
+    tax_rub: float
+    packaging: float
+    fuel: float
+    gift: float
+    defect_percent: float
+    real_defect_percent: float
+    ad_manager_name: Optional[str] = None
+    profit_per_item: Optional[float] = None
+
+
+class MissingCostEntry(BaseModel):
+    vendor_code: str
+    dates: List[date]
 
 
 # --- НОВЫЙ Эндпоинт для получения ежедневной истории закупочных цен ---
@@ -456,12 +742,154 @@ async def get_purchase_price_history_daily(
             cursor.close()
 
 
+@app.get("/api/latest_costs", response_model=LatestCostsResponse)
+async def get_latest_costs(vendor_code: str = Query(..., description="Vendor code")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT "vendorCode", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging,
+                       fuel, gift, defect_percent, real_defect_percent,
+                       ad_manager_name, date, actual_discounted_price
+                FROM sales
+                WHERE "vendorCode" = %s
+                ORDER BY date DESC
+                LIMIT 1
+                """
+        df = pd.read_sql_query(query, conn, params=(vendor_code,))
+        df.columns = df.columns.str.lower()
+        df = df.rename(columns={"vendorcode": "vendor_code"})
+        if df.empty:
+            raise HTTPException(status_code=404, detail="No data for vendor code")
+        df["profit_per_item"] = (
+            df["actual_discounted_price"]
+            - df["purchase_price"]
+            - df["delivery_to_warehouse"]
+            - df["wb_commission_rub"]
+            - df["wb_logistics"]
+            - df["tax_rub"]
+            - df["packaging"]
+            - df["fuel"]
+            - df["gift"]
+            - df["defect_percent"]
+        )
+        row = df.iloc[0]
+        return LatestCostsResponse(**row.to_dict())
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/latest_costs_all", response_model=List[LatestCostsResponse])
+async def get_latest_costs_all():
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT DISTINCT ON ("vendorCode") "vendorCode", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel, gift,
+                       defect_percent, real_defect_percent, ad_manager_name, date, actual_discounted_price
+                FROM sales
+                ORDER BY "vendorCode", date DESC
+                """
+        df = pd.read_sql_query(query, conn)
+        df.columns = df.columns.str.lower()
+        df = df.rename(columns={"vendorcode": "vendor_code"})
+        df["profit_per_item"] = (
+            df["actual_discounted_price"]
+            - df["purchase_price"]
+            - df["delivery_to_warehouse"]
+            - df["wb_commission_rub"]
+            - df["wb_logistics"]
+            - df["tax_rub"]
+            - df["packaging"]
+            - df["fuel"]
+            - df["gift"]
+            - df["defect_percent"]
+        )
+        return df.to_dict(orient="records")
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/missing_costs", response_model=List[MissingCostEntry])
+def get_missing_costs(
+        start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+        end_date: str = Query(..., description="End date YYYY-MM-DD")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT "vendorCode", date
+                FROM sales
+                WHERE "vendorCode" IN (
+                        SELECT DISTINCT "vendorCode"
+                        FROM sales
+                        WHERE COALESCE("ordersCount", 0) > 0
+                )
+                  AND date BETWEEN %s AND %s
+                  AND COALESCE("ordersCount", 0) > 0
+                  AND (
+                        purchase_price IS NULL OR purchase_price = 0 OR
+                        delivery_to_warehouse IS NULL OR delivery_to_warehouse = 0 OR
+                        wb_commission_rub IS NULL OR wb_commission_rub = 0 OR
+                        wb_logistics IS NULL OR wb_logistics = 0 OR
+                        tax_rub IS NULL OR tax_rub = 0 OR
+                        packaging IS NULL OR packaging = 0 OR
+                        fuel IS NULL OR fuel = 0 OR
+                        gift IS NULL OR gift = 0 OR
+                        real_defect_percent IS NULL OR real_defect_percent = 0
+                      )
+                ORDER BY "vendorCode", date
+                """
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        if df.empty:
+            return []
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"]).dt.date
+        grouped = df.groupby("vendorcode")['date'].apply(lambda x: sorted(x.unique())).reset_index(name='dates')
+        grouped = grouped.rename(columns={'vendorcode': 'vendor_code'})
+        return grouped.to_dict(orient='records')
+    finally:
+        if conn:
+            conn.close()
+
+
 # --- НОВАЯ Pydantic модель для создания закупочной партии ---
 class PurchaseBatchCreate(BaseModel):
     vendor_code: str = Field(..., description="Артикул товара")
     purchase_price: float = Field(..., gt=0, description="Закупочная цена за единицу")
     quantity_bought: int = Field(..., gt=0, description="Количество товаров в партии")
     start_date: date = Field(..., description="Дата, с которой партия считается активной (формат YYYY-MM-DD)")
+
+
+class PurchaseBatchResponse(BaseModel):
+    vendor_code: str
+    purchase_price: float
+    quantity_bought: int
+    quantity_sold: int
+    is_active: bool
+    start_date: date
+    end_date: Optional[date]
+
+
+class AdManagerUpdate(BaseModel):
+    imt_id: int
+    ad_manager_name: str
+    start_date: date
+
+
+class CardChangeOption(BaseModel):
+    name: str
+
+
+class CardChangeUpdate(BaseModel):
+    vendorcode: str
+    card_change: str
+    start_date: date
+    end_date: Optional[date] = None
 
 
 # --- НОВЫЙ Эндпоинт для создания закупочной партии ---
@@ -516,10 +944,179 @@ async def create_purchase_batch(batch: PurchaseBatchCreate):
             conn.close()
 
 
+@app.get("/api/purchase_batches", response_model=List[PurchaseBatchResponse])
+async def get_purchase_batches(vendor_code: str = Query(..., description="Артикул товара")):
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT vendor_code, purchase_price, quantity_bought, quantity_sold,
+                       is_active, start_date, end_date
+                FROM purchase_batches
+                WHERE vendor_code = %s
+                ORDER BY start_date DESC
+                """
+        df = pd.read_sql_query(query, conn, params=(vendor_code,))
+        df.columns = df.columns.str.lower()
+        return df.to_dict(orient="records")
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/update_ad_manager")
+def update_ad_manager(update: AdManagerUpdate):
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        # Apply the new manager only to rows on or after the chosen start date
+        cur.execute(
+            "UPDATE sales SET ad_manager_name = %s "
+            "WHERE \"imtID\" = %s AND date >= %s",
+            (update.ad_manager_name, update.imt_id,
+             update.start_date.strftime('%Y-%m-%d')),
+        )
+        affected = cur.rowcount
+        conn.commit()
+        return {"updated_rows": affected}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/card_change_options")
+def get_card_change_options():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM card_change_options ORDER BY id")
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
+@app.post("/api/card_change_options")
+def add_card_change_option(opt: CardChangeOption):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO card_change_options (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+            (opt.name,),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.delete("/api/card_change_options")
+def delete_card_change_option(name: str):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM card_change_options WHERE name = %s", (name,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.post("/api/update_card_change")
+def update_card_change(update: CardChangeUpdate):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        query = "UPDATE sales SET \"card_changes\" = %s WHERE \"vendorCode\" = %s AND date >= %s"
+        params = [update.card_change, update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+        if update.end_date:
+            query += " AND date <= %s"
+            params.append(update.end_date.strftime('%Y-%m-%d'))
+        cur.execute(query, params)
+        affected = cur.rowcount
+        conn.commit()
+        return {"updated_rows": affected}
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/api/manager_info")
+def get_manager_info(imt_id: int = Query(..., description="IMT ID")):
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ad_manager_name FROM sales "
+            "WHERE \"imtID\" = %s AND ad_manager_name IS NOT NULL "
+            "AND ad_manager_name <> '0' ORDER BY date DESC LIMIT 1",
+            (imt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"ad_manager_name": None, "start_date": None}
+        manager = row[0]
+        cur.execute(
+            "SELECT MIN(date) FROM sales WHERE \"imtID\" = %s AND ad_manager_name = %s",
+            (imt_id, manager),
+        )
+        start_row = cur.fetchone()
+        start_date = start_row[0] if start_row else None
+        return {"ad_manager_name": manager, "start_date": start_date}
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/ad_managers")
+def get_ad_managers():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT ad_manager_name FROM sales "
+        "WHERE ad_manager_name IS NOT NULL AND ad_manager_name <> '0' "
+        "ORDER BY ad_manager_name"
+    )
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
+@app.get("/api/brands")
+def get_brands():
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT brand FROM sales "
+        "WHERE brand IS NOT NULL AND brand <> '' "
+        "ORDER BY brand"
+    )
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
 # --- Модель для обновления других затрат (purchase_price теперь опционален) ---
 class CostUpdate(BaseModel):
     vendorcode: str
     start_date: date  # Дата, начиная с которой обновляются расходы
+    end_date: Optional[date] = None  # Дата, до которой применять обновление
     purchase_price: Optional[float] = None  # Теперь опционально, т.к. может быть задано через партии
     delivery_to_warehouse: Optional[float] = None
     wb_commission_rub: Optional[float] = None
@@ -528,7 +1125,7 @@ class CostUpdate(BaseModel):
     packaging: Optional[float] = None
     fuel: Optional[float] = None
     gift: Optional[float] = None
-    defect_percent: Optional[float] = None
+    real_defect_percent: Optional[float] = None
 
 
 @app.post("/api/update_costs")
@@ -541,14 +1138,12 @@ def update_costs(update: CostUpdate):
 
         fields_to_update_sales = []
         values_to_update_sales = []
-        fields_to_update_cards = []
-        values_to_update_cards = []
 
         # Список полей, которые могут быть обновлены
         updatable_fields = [
             "purchase_price",
             "delivery_to_warehouse", "wb_commission_rub",
-            "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent"
+            "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "real_defect_percent"
         ]
 
         for field in updatable_fields:
@@ -556,52 +1151,67 @@ def update_costs(update: CostUpdate):
             if val is not None and not (isinstance(val, float) and np.isnan(val)):
                 fields_to_update_sales.append(f'"{field}" = %s')
                 values_to_update_sales.append(val)
-                fields_to_update_cards.append(f'"{field}" = %s')
-                values_to_update_cards.append(val)
             elif isinstance(val, float) and np.isnan(val):
                 fields_to_update_sales.append(f'"{field}" = %s')
                 values_to_update_sales.append(0)  # Отправляем 0 в базу, если на фронте было null
-                fields_to_update_cards.append(f'"{field}" = %s')
-                values_to_update_cards.append(0)
 
         updated_rows_sales = 0
-        updated_rows_cards = 0
 
         if fields_to_update_sales:
             # Обновляем таблицу sales
             query_sales_update = f"UPDATE sales SET {', '.join(fields_to_update_sales)} WHERE \"vendorCode\" = %s AND date >= %s"
-            cursor.execute(query_sales_update,
-                           values_to_update_sales + [update.vendorcode, update.start_date.strftime('%Y-%m-%d')])
+            params = [update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+            if update.end_date:
+                query_sales_update += " AND date <= %s"
+                params.append(update.end_date.strftime('%Y-%m-%d'))
+            cursor.execute(query_sales_update, values_to_update_sales + params)
             updated_rows_sales = cursor.rowcount
 
+            if update.real_defect_percent is not None and not (
+                    isinstance(update.real_defect_percent, float) and np.isnan(update.real_defect_percent)):
+                query_def = (
+                    "UPDATE sales SET \"real_defect_percent\" = %s, "
+                    "\"defect_percent\" = COALESCE(\"actual_discounted_price\",0)/100 * %s "
+                    "WHERE \"vendorCode\" = %s AND date >= %s"
+                )
+                params_def = [
+                    update.real_defect_percent,
+                    update.real_defect_percent,
+                    update.vendorcode,
+                    update.start_date.strftime('%Y-%m-%d'),
+                ]
+                if update.end_date:
+                    query_def += " AND date <= %s"
+                    params_def.append(update.end_date.strftime('%Y-%m-%d'))
+                cursor.execute(query_def, params_def)
+
             # Пересчитываем cost_price и total_profit в таблице sales
-            cursor.execute(
+            query_recalc = (
                 """
                 UPDATE sales
                 SET "cost_price"   = COALESCE("purchase_price", 0) + COALESCE("delivery_to_warehouse", 0) +
                                      COALESCE("wb_commission_rub", 0) + COALESCE("wb_logistics", 0) +
                                      COALESCE("tax_rub", 0) + COALESCE("packaging", 0) +
                                      COALESCE("fuel", 0) + COALESCE("gift", 0) + COALESCE("defect_percent", 0),
-                    "total_profit" = (COALESCE("actual_discounted_price", 0) - (
+                    "total_profit" = ((COALESCE("actual_discounted_price", 0) - (
                         COALESCE("purchase_price", 0) + COALESCE("delivery_to_warehouse", 0) +
                         COALESCE("wb_commission_rub", 0) + COALESCE("wb_logistics", 0) +
                         COALESCE("tax_rub", 0) + COALESCE("packaging", 0) +
                         COALESCE("fuel", 0) + COALESCE("gift", 0) + COALESCE("defect_percent", 0)
-                        )) * COALESCE("ordersCount", 0) - COALESCE("ad_spend", 0)
+                        )) * COALESCE("ordersCount", 0) - COALESCE("ad_spend", 0)) * COALESCE("svikup_percent", 100) / 100
                 WHERE "vendorCode" = %s
-                  AND date >= %s
-                """,
-                (update.vendorcode, update.start_date.strftime('%Y-%m-%d')),
+                  AND date >= %s"""
             )
+            params_recalc = [update.vendorcode, update.start_date.strftime('%Y-%m-%d')]
+            if update.end_date:
+                query_recalc += " AND date <= %s"
+                params_recalc.append(update.end_date.strftime('%Y-%m-%d'))
+            cursor.execute(query_recalc, params_recalc)
 
-            # Обновляем базовую таблицу cards для будущих расчётов и согласованности
-            if fields_to_update_cards:
-                query_cards_update = f"UPDATE cards SET {', '.join(fields_to_update_cards)} WHERE \"vendor_code\" = %s"
-                cursor.execute(query_cards_update, values_to_update_cards + [update.vendorcode])
-                updated_rows_cards = cursor.rowcount
+            # Базовая таблица cards больше не синхронизируется через этот эндпоинт
 
         conn.commit()
-        return {"updated_sales_rows": updated_rows_sales, "updated_cards_rows": updated_rows_cards}
+        return {"updated_sales_rows": updated_rows_sales}
     except Exception as e:
         if conn:
             conn.rollback()
@@ -671,5 +1281,92 @@ async def check_purchase_batches():
     finally:
         if cursor:
             cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.get("/api/problem_cards")
+def get_problem_cards(
+    problem_type: str,
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    category: str = Query(None),
+):
+    """Return cards with negative profit, low margin, or no orders."""
+    conn = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        query = """
+                SELECT "imtID", "vendorCode", "ordersCount", "ad_spend",
+                       "actual_discounted_price", purchase_price, delivery_to_warehouse,
+                       wb_commission_rub, wb_logistics, tax_rub, packaging, fuel,
+                       gift, defect_percent, ad_manager_name, "subjectName", date
+                FROM sales
+                WHERE date BETWEEN %s AND %s
+                """
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+        df.columns = df.columns.str.lower()
+        df["date"] = pd.to_datetime(df["date"])
+        if df.empty:
+            return {"data": []}
+        df = df.fillna(0)
+        df = update_sales_purchase_prices(df, conn)
+        df["cost_price"] = (
+            df["purchase_price"]
+            + df["delivery_to_warehouse"]
+            + df["wb_commission_rub"]
+            + df["wb_logistics"]
+            + df["tax_rub"]
+            + df["packaging"]
+            + df["fuel"]
+            + df["gift"]
+            + df["defect_percent"]
+        )
+        df["orderscount"] = df["orderscount"].astype(int)
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
+        df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
+        df["investment_total"] = (
+            df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] + df["fuel"] + df["gift"]
+        ) * df["orderscount"]
+        grouped = df.groupby("imtid").agg({
+            "orderscount": "sum",
+            "ad_spend": "sum",
+            "profit": "sum",
+            "revenue": "sum",
+            "investment_total": "sum",
+        }).reset_index()
+        df_sorted = df.sort_values(["imtid", "date"])
+        latest_manager = df_sorted.groupby("imtid")["ad_manager_name"].apply(
+            lambda x: next((v for v in reversed(list(x)) if v not in [None, "", "0"]), "")
+        )
+        latest_subject = df_sorted.groupby("imtid")["subjectname"].apply(
+            lambda x: next((v for v in reversed(list(x)) if v not in [None, "", "0"]), "")
+        )
+        grouped["vendorcodes"] = grouped["imtid"].apply(
+            lambda imt: ", ".join(str(v) for v in df[df["imtid"] == imt]["vendorcode"].unique())
+        )
+        grouped["ad_manager_name"] = grouped["imtid"].map(latest_manager)
+        grouped["subjectname"] = grouped["imtid"].map(latest_subject)
+        grouped["margin_percent"] = grouped.apply(
+            lambda row: (row["profit"] / row["investment_total"] * 100) if row["investment_total"] != 0 else 0,
+            axis=1,
+        )
+        if problem_type == "negative_profit":
+            grouped = grouped[grouped["profit"] < 0]
+        elif problem_type == "low_margin":
+            grouped = grouped[grouped["margin_percent"] < 10]
+        elif problem_type == "no_orders":
+            recent_start = pd.to_datetime(end_date) - pd.Timedelta(days=6)
+            recent = df[df["date"] >= recent_start]
+            rec_orders = recent.groupby("imtid")["orderscount"].sum()
+            no_orders_ids = rec_orders[rec_orders == 0].index
+            grouped = grouped[grouped["imtid"].isin(no_orders_ids)]
+
+        if category:
+            grouped = grouped[grouped["subjectname"] == category]
+        grouped = grouped.rename(columns={"profit": "total_profit"})
+        grouped = grouped.drop(columns=["investment_total", "revenue"])
+        return {"data": grouped.to_dict(orient="records")}
+    finally:
         if conn:
             conn.close()

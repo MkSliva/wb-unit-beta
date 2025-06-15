@@ -10,13 +10,16 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const Dashboard = () => {
+const Dashboard = ({ openEconomics, openMissing, openChanges, openCompare, openProblems }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalProfit, setTotalProfit] = useState(0);
   const [groupedSales, setGroupedSales] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [totalAdSpend, setTotalAdSpend] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [missingCosts, setMissingCosts] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedImt, setSelectedImt] = useState(null);
@@ -26,6 +29,21 @@ const Dashboard = () => {
 
   // *** НОВЫЕ СОСТОЯНИЯ ДЛЯ ДАННЫХ ГРАФИКОВ ***
   const [purchasePriceHistory, setPurchasePriceHistory] = useState([]);
+
+  const [overallDaily, setOverallDaily] = useState([]);
+  const [latestCosts, setLatestCosts] = useState({});
+  const [hoveredVendor, setHoveredVendor] = useState(null);
+  const [purchaseBatches, setPurchaseBatches] = useState({});
+  const [cardChangeOptions, setCardChangeOptions] = useState([]);
+  const [cardChanges, setCardChanges] = useState([{ option: "", start_date: "" }]);
+  const [changeVendors, setChangeVendors] = useState([]);
+  const [withManager, setWithManager] = useState(false);
+  const [showManagerForm, setShowManagerForm] = useState(false);
+  const [managerData, setManagerData] = useState({ name: "", start_date: "" });
+  const [managerInfo, setManagerInfo] = useState({
+    ad_manager_name: "",
+    start_date: "",
+  });
 
   // *** СОСТОЯНИЕ ДЛЯ СОРТИРОВКИ ***
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "ascending" });
@@ -44,6 +62,13 @@ const Dashboard = () => {
 
     setEndDate(today.toISOString().split("T")[0]);
     setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
+  }, []);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/card_change_options")
+      .then((r) => r.json())
+      .then((d) => setCardChangeOptions(d))
+      .catch(() => {});
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -70,6 +95,28 @@ const Dashboard = () => {
       const data = await response.json();
       setGroupedSales(data.data);
       setTotalProfit(data.total_profit);
+      setTotalAdSpend(data.total_ad_spend);
+      setTotalOrders(data.total_orders);
+
+      const dailyResp = await fetch(
+        `http://localhost:8000/api/sales_overall_daily?start_date=${startDate}&end_date=${endDate}`
+      );
+      if (dailyResp.ok) {
+        const dailyData = await dailyResp.json();
+        setOverallDaily(dailyData.data);
+      } else {
+        setOverallDaily([]);
+      }
+
+      const missingResp = await fetch(
+        `http://localhost:8000/api/missing_costs?start_date=${startDate}&end_date=${endDate}`
+      );
+      if (missingResp.ok) {
+        const m = await missingResp.json();
+        setMissingCosts(m);
+      } else {
+        setMissingCosts([]);
+      }
     } catch (err) {
       console.error("Error fetching grouped sales:", err);
       setError("Не удалось загрузить данные о продажах. " + err.message);
@@ -94,6 +141,11 @@ const Dashboard = () => {
   // *** МЕМОИЗИРОВАННЫЕ ОТСОРТИРОВАННЫЕ ДАННЫЕ ***
   const sortedGroupedSales = useMemo(() => {
     let sortableItems = [...groupedSales];
+    if (withManager) {
+      sortableItems = sortableItems.filter(
+        (i) => i.ad_manager_name && i.ad_manager_name !== "0"
+      );
+    }
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
         const valA = a[sortConfig.key];
@@ -129,6 +181,12 @@ const Dashboard = () => {
         }
         const detailsData = await detailsResponse.json();
         setGroupDetails(detailsData.data);
+        setChangeVendors(detailsData.data.map((item) => item.vendorcode));
+
+        const batchPromises = detailsData.data.map((item) =>
+          fetchPurchaseBatches(item.vendorcode)
+        );
+        await Promise.all(batchPromises);
 
         // Получение данных для ежедневных графиков (прибыль, заказы, реклама)
         const dailyResponse = await fetch(
@@ -183,9 +241,10 @@ const Dashboard = () => {
             packaging: firstVendorData.packaging || 0,
             fuel: firstVendorData.fuel || 0,
             gift: firstVendorData.gift || 0,
-            defect_percent: firstVendorData.defect_percent || 0,
+            real_defect_percent: firstVendorData.real_defect_percent || 0,
             start_date: startDate,
           });
+          fetchLatestCost(firstVendorData.vendorcode);
         }
       } catch (err) {
         console.error("Error fetching group details or price history:", err); // Обновлено сообщение об ошибке
@@ -200,6 +259,9 @@ const Dashboard = () => {
   const openModal = (imtId) => {
     setSelectedImt(imtId);
     fetchGroupDetails(imtId);
+    fetchManagerInfo(imtId);
+    setShowManagerForm(false);
+    setManagerData({ name: "", start_date: "" });
     setIsModalOpen(true);
   };
 
@@ -209,8 +271,13 @@ const Dashboard = () => {
     setGroupDetails([]);
     setDailySales([]);
     setPurchasePriceHistory([]);
+    setPurchaseBatches({});
     setEditData({});
+    setShowManagerForm(false);
+    setManagerData({ name: "", start_date: "" });
+    setManagerInfo({ ad_manager_name: "", start_date: "" });
     setError(null);
+    setChangeVendors([]);
   };
 
   const handleEditChange = (e) => {
@@ -309,6 +376,62 @@ const Dashboard = () => {
     }
   };
 
+  const handleCardChange = (idx, field, value) => {
+    setCardChanges((prev) =>
+      prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c))
+    );
+  };
+
+  const addCardChange = () => {
+    setCardChanges((p) => [...p, { option: "", start_date: "" }]);
+  };
+
+  const removeCardChange = (idx) => {
+    setCardChanges((p) => p.filter((_, i) => i !== idx));
+  };
+
+  const saveCardChanges = async () => {
+    for (const vendor of changeVendors) {
+      for (const c of cardChanges) {
+        if (!c.option) continue;
+        await fetch("http://localhost:8000/api/update_card_change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vendorcode: vendor,
+            card_change: c.option,
+            start_date: c.start_date || startDate,
+          }),
+        });
+      }
+    }
+    alert("Изменения сохранены");
+  };
+
+  const submitAdManager = async () => {
+    if (!managerData.name || !selectedImt) return;
+    const payload = {
+      imt_id: selectedImt,
+      ad_manager_name: managerData.name,
+      start_date: managerData.start_date || startDate,
+    };
+    try {
+      const resp = await fetch("http://localhost:8000/api/update_ad_manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (resp.ok) {
+        alert("Рекламный менеджер обновлен");
+        fetchData();
+        fetchManagerInfo(selectedImt);
+        setShowManagerForm(false);
+      }
+    } catch (e) {
+      console.error("Failed to update manager", e);
+    }
+  };
+
   const checkBatches = async () => {
     try {
       const response = await fetch("http://localhost:8000/api/check_purchase_batches");
@@ -339,6 +462,71 @@ const Dashboard = () => {
     }
   };
 
+  const fetchLatestCost = async (vendorCode) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/latest_costs?vendor_code=${vendorCode}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setLatestCosts((prev) => ({ ...prev, [vendorCode]: data }));
+        setEditData((prev) => ({
+          ...prev,
+          vendorcode: vendorCode,
+          purchase_price: data.purchase_price || 0,
+          delivery_to_warehouse: data.delivery_to_warehouse || 0,
+          wb_commission_rub: data.wb_commission_rub || 0,
+          wb_logistics: data.wb_logistics || 0,
+          tax_rub: data.tax_rub || 0,
+          packaging: data.packaging || 0,
+          fuel: data.fuel || 0,
+          gift: data.gift || 0,
+          real_defect_percent: data.real_defect_percent || 0,
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching latest costs:", error);
+    }
+  };
+
+  const handleVendorSelect = async (e) => {
+    const vendor = e.target.value;
+    await fetchLatestCost(vendor);
+  };
+
+  const fetchPurchaseBatches = async (vendorCode) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/purchase_batches?vendor_code=${vendorCode}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setPurchaseBatches((prev) => ({ ...prev, [vendorCode]: data }));
+      }
+    } catch (error) {
+      console.error("Error fetching purchase batches:", error);
+    }
+  };
+
+  const fetchManagerInfo = async (imtId) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/manager_info?imt_id=${imtId}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setManagerInfo({
+          ad_manager_name: data.ad_manager_name || "",
+          start_date: data.start_date || "",
+        });
+      } else {
+        setManagerInfo({ ad_manager_name: "", start_date: "" });
+      }
+    } catch (error) {
+      console.error("Error fetching manager info:", error);
+    }
+  };
+
   // Вспомогательная функция для получения индикатора сортировки
   const getSortIndicator = (key) => {
     if (sortConfig.key === key) {
@@ -349,7 +537,29 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">WB Аналитика Продаж</h1>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">WB Аналитика Продаж</h1>
+        <div className="space-x-2">
+          <button
+            onClick={openEconomics}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Данные Юнит Экономики
+          </button>
+          <button
+            onClick={openChanges}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Изменения карточек
+          </button>
+          <button
+            onClick={openCompare}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Сравнение карточек
+          </button>
+        </div>
+      </div>
 
       <div className="flex space-x-4 mb-4">
         <div>
@@ -382,6 +592,18 @@ const Dashboard = () => {
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
           />
         </div>
+        <div className="flex items-center mt-6">
+          <input
+            type="checkbox"
+            id="withManager"
+            checked={withManager}
+            onChange={(e) => setWithManager(e.target.checked)}
+            className="mr-2"
+          />
+          <label htmlFor="withManager" className="text-sm font-medium text-gray-700">
+            С рекламным менеджером
+          </label>
+        </div>
         <button
           onClick={fetchData}
           className="mt-6 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
@@ -392,17 +614,112 @@ const Dashboard = () => {
       </div>
 
       {error && <div className="text-red-600 mb-4">{error}</div>}
-
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold">
-          Общая прибыль:{" "}
-          <span
-            className={`${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}
-          >
-            {totalProfit.toFixed(2)} руб.
-          </span>
-        </h2>
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Общая прибыль</div>
+          <div className={`text-xl font-semibold ${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>{totalProfit.toFixed(2)} руб.</div>
+        </div>
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Реклама</div>
+          <div className="text-xl font-semibold">{totalAdSpend.toFixed(2)} руб.</div>
+        </div>
+        <div className="p-3 bg-gray-50 rounded shadow">
+          <div className="text-sm text-gray-500">Заказы</div>
+          <div className="text-xl font-semibold">{totalOrders}</div>
+        </div>
       </div>
+
+      <div className="mb-6">
+        {overallDaily.length > 0 ? (
+          <div style={{ width: "100%", height: 300 }}>
+            <ResponsiveContainer>
+              <LineChart
+                data={overallDaily}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis yAxisId="left" orientation="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip />
+                <Legend />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="orderscount"
+                  stroke="#82ca9d"
+                  name="Заказы"
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="total_profit"
+                  stroke="#8884d8"
+                  name="Прибыль"
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="ad_spend"
+                  stroke="#ffc658"
+                  name="Реклама"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="text-gray-600">Нет данных для графика.</p>
+        )}
+      </div>
+
+      {missingCosts.length > 0 && (
+        <div className="bg-red-200 text-red-800 p-4 mb-4">
+          <p>
+            Внимание! У некоторых заказанных товаров не заполнена закупочная
+            цена! Данные сайта могут быть неточными!
+          </p>
+          <button
+            onClick={() =>
+              openMissing({ start: startDate, end: endDate })
+            }
+            className="underline mt-2"
+          >
+            Посмотреть
+          </button>
+        </div>
+      )}
+
+      {groupedSales.length > 0 && (
+        <div className="bg-yellow-100 text-yellow-800 p-4 mb-4">
+          <p className="font-semibold mb-2">Внимание! Проблемные карточки!</p>
+          <div className="space-y-1">
+            <button
+              onClick={() =>
+                openProblems("negative_profit", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Отрицательная прибыль - посмотреть
+            </button>
+            <button
+              onClick={() =>
+                openProblems("low_margin", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Низкая маржинальность - посмотреть
+            </button>
+            <button
+              onClick={() =>
+                openProblems("no_orders", { start: startDate, end: endDate })
+              }
+              className="underline block"
+            >
+              Отсутствие заказов - посмотреть
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 shadow-md rounded-lg">
@@ -411,7 +728,7 @@ const Dashboard = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 IMT ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[200px]">
                 Артикулы
               </th>
               <th
@@ -432,6 +749,20 @@ const Dashboard = () => {
               >
                 Прибыль {getSortIndicator("total_profit")}
               </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("revenue_percent")}>
+                  Доля выручки % {getSortIndicator("revenue_percent")}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("profit_percent")}>
+                  Доля прибыли % {getSortIndicator("profit_percent")}
+                </th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => requestSort("margin_percent")}
+              >
+                Маржа % {getSortIndicator("margin_percent")}
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Действия
               </th>
@@ -443,7 +774,10 @@ const Dashboard = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {group.imtid}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td
+                  className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[200px] truncate"
+                  title={group.vendorcodes}
+                >
                   {group.vendorcodes}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -458,6 +792,15 @@ const Dashboard = () => {
                   }`}
                 >
                   {group.total_profit.toFixed(2)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.revenue_percent ? group.revenue_percent.toFixed(2) + " %" : "-"}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.profit_percent ? group.profit_percent.toFixed(2) + " %" : "-"}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {group.margin_percent ? group.margin_percent.toFixed(2) + " %" : "-"}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
@@ -590,8 +933,29 @@ const Dashboard = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {groupDetails.map((detail) => (
                         <tr key={detail.vendorcode}>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td
+                            className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 relative"
+                            onMouseEnter={() => {
+                              setHoveredVendor(detail.vendorcode);
+                              if (!latestCosts[detail.vendorcode]) {
+                                fetchLatestCost(detail.vendorcode);
+                              }
+                            }}
+                            onMouseLeave={() => setHoveredVendor(null)}
+                          >
                             {detail.vendorcode}
+                            {hoveredVendor === detail.vendorcode && latestCosts[detail.vendorcode] && (
+                              <div className="absolute left-0 top-full mt-1 p-2 bg-white border rounded shadow-lg text-xs z-10">
+                                <div>Закупка: {latestCosts[detail.vendorcode].purchase_price}</div>
+                                <div>Доставка: {latestCosts[detail.vendorcode].delivery_to_warehouse}</div>
+                                <div>Комиссия: {latestCosts[detail.vendorcode].wb_commission_rub}</div>
+                                <div>Логистика: {latestCosts[detail.vendorcode].wb_logistics}</div>
+                                <div>Налог: {latestCosts[detail.vendorcode].tax_rub}</div>
+                                <div>Упаковка: {latestCosts[detail.vendorcode].packaging}</div>
+                                <div>Топливо: {latestCosts[detail.vendorcode].fuel}</div>
+                                <div>Подарок: {latestCosts[detail.vendorcode].gift}</div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                             {detail.orderscount}
@@ -634,19 +998,18 @@ const Dashboard = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <label className="block">
                       Артикул для обновления:
-                      <input
-                        type="text"
+                      <select
                         name="vendorcode"
                         className="border p-2 rounded-md w-full mt-1"
                         value={editData.vendorcode || ""}
-                        onChange={handleEditChange}
-                        list="vendorcodes-list-edit"
-                      />
-                      <datalist id="vendorcodes-list-edit">
+                        onChange={handleVendorSelect}
+                      >
                         {groupDetails.map((item) => (
-                          <option key={item.vendorcode} value={item.vendorcode} />
+                          <option key={item.vendorcode} value={item.vendorcode}>
+                            {item.vendorcode}
+                          </option>
                         ))}
-                      </datalist>
+                      </select>
                     </label>
                     <label className="block">
                       Дата начала действия:
@@ -683,36 +1046,12 @@ const Dashboard = () => {
                       />
                     </label>
                     <label className="block">
-                      Комиссия WB (руб):
-                      <input
-                        type="number"
-                        name="wb_commission_rub"
-                        className="border p-2 rounded-md w-full mt-1"
-                        value={editData.wb_commission_rub || ""}
-                        onChange={handleEditChange}
-                        min="0"
-                        step="0.01"
-                      />
-                    </label>
-                    <label className="block">
                       Логистика WB (руб):
                       <input
                         type="number"
                         name="wb_logistics"
                         className="border p-2 rounded-md w-full mt-1"
                         value={editData.wb_logistics || ""}
-                        onChange={handleEditChange}
-                        min="0"
-                        step="0.01"
-                      />
-                    </label>
-                    <label className="block">
-                      Налог (руб):
-                      <input
-                        type="number"
-                        name="tax_rub"
-                        className="border p-2 rounded-md w-full mt-1"
-                        value={editData.tax_rub || ""}
                         onChange={handleEditChange}
                         min="0"
                         step="0.01"
@@ -758,21 +1097,159 @@ const Dashboard = () => {
                       Процент брака (%):
                       <input
                         type="number"
-                        name="defect_percent"
+                        name="real_defect_percent"
                         className="border p-2 rounded-md w-full mt-1"
-                        value={editData.defect_percent || ""}
+                        value={editData.real_defect_percent || ""}
                         onChange={handleEditChange}
                         min="0"
                         step="0.01"
-                      />
-                    </label>
+                  />
+                </label>
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={submitCostUpdate}
+                  className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                >
+                  Обновить расходы для артикула
+                </button>
+              </div>
+
+              {/* ad manager section */}
+              <div className="mt-8 border-t pt-4">
+                <h4 className="font-semibold mb-2">Рекламный менеджер</h4>
+                {managerInfo.ad_manager_name && managerInfo.ad_manager_name !== "0" && !showManagerForm ? (
+                  <div>
+                    <p className="mb-2">
+                      На ведении у менеджера {managerInfo.ad_manager_name} c {managerInfo.start_date}
+                    </p>
+                    <button
+                      onClick={() => setShowManagerForm(true)}
+                      className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                    >
+                      Изменить менеджера
+                    </button>
                   </div>
-                  <button
-                    onClick={submitCostUpdate}
-                    className="mt-4 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                ) : (
+                  <>
+                    <label className="inline-flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={showManagerForm}
+                        onChange={(e) => setShowManagerForm(e.target.checked)}
+                        className="mr-2"
+                      />
+                      <span>Указать менеджера</span>
+                    </label>
+                    {showManagerForm && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Имя"
+                          value={managerData.name}
+                          onChange={(e) =>
+                            setManagerData((p) => ({ ...p, name: e.target.value }))
+                          }
+                          className="border p-2 rounded-md"
+                        />
+                        <input
+                          type="date"
+                          value={managerData.start_date || startDate}
+                          onChange={(e) =>
+                            setManagerData((p) => ({ ...p, start_date: e.target.value }))
+                          }
+                          className="border p-2 rounded-md"
+                        />
+                        <button
+                          onClick={() => submitAdManager()}
+                          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
+                          Сохранить менеджера
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="mt-8 border-t pt-4">
+                <h4 className="font-semibold mb-2">Изменения в карточке</h4>
+                <div className="mb-2">
+                  <label className="block mb-1">Артикулы:</label>
+                  <select
+                    multiple
+                    className="border p-1 rounded w-full"
+                    value={changeVendors}
+                    onChange={(e) =>
+                      setChangeVendors(
+                        Array.from(e.target.selectedOptions).map((o) => o.value)
+                      )
+                    }
                   >
-                    Обновить расходы для артикула
-                  </button>
+                    {groupDetails.map((item) => (
+                      <option key={item.vendorcode} value={item.vendorcode}>
+                        {item.vendorcode}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {cardChanges.map((c, idx) => (
+                  <div key={idx} className="flex items-center mb-2">
+                    <select
+                      className="border p-1 rounded mr-2"
+                      value={c.option}
+                      onChange={(e) => handleCardChange(idx, "option", e.target.value)}
+                    >
+                      <option value="">Выберите</option>
+                      {cardChangeOptions.map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      className="border p-1 rounded mr-2"
+                      value={c.start_date}
+                      onChange={(e) => handleCardChange(idx, "start_date", e.target.value)}
+                    />
+                    <button className="text-red-600" onClick={() => removeCardChange(idx)}>x</button>
+                  </div>
+                ))}
+                <button onClick={addCardChange} className="px-2 py-1 bg-gray-200 rounded mr-2">Добавить изменение</button>
+                <button onClick={saveCardChanges} className="px-4 py-1 bg-green-500 text-white rounded">Сохранить</button>
+              </div>
+              </div>
+
+                {/* --- Закупочные партии --- */}
+                <div className="mt-6">
+                  <h4 className="text-lg font-semibold mb-2">История закупочных партий</h4>
+                  {Object.keys(purchaseBatches).map((vc) => (
+                    <div key={vc} className="mb-4">
+                      <h5 className="font-medium mb-1">Артикул {vc}</h5>
+                      <table className="min-w-full divide-y divide-gray-200 border">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Начало</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Конец</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Цена</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Кол-во</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Продано</th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {purchaseBatches[vc]?.map((b) => (
+                            <tr key={b.start_date} className={b.is_active ? 'bg-green-50' : ''}>
+                              <td className="px-2 py-1 text-sm">{b.start_date}</td>
+                              <td className="px-2 py-1 text-sm">{b.end_date || '-'}</td>
+                              <td className="px-2 py-1 text-sm">{b.purchase_price}</td>
+                              <td className="px-2 py-1 text-sm">{b.quantity_bought}</td>
+                              <td className="px-2 py-1 text-sm">{b.quantity_sold}</td>
+                              <td className="px-2 py-1 text-sm">{b.is_active ? 'активна' : 'закрыта'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
                 </div>
 
                 {/* --- ГРАФИКИ --- */}

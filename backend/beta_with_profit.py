@@ -2,14 +2,15 @@ import os
 import math
 import httpx
 import asyncio
-import requests
-import psycopg2
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from collections import defaultdict
 import json
+from datetime import datetime, timedelta
+from collections import defaultdict
+from typing import Optional, List, Dict  # Добавлены для полной типизации
+
 import pandas as pd
-from typing import Optional, List, Dict # Добавлены для полной типизации
+import psycopg2
+import requests
+from dotenv import load_dotenv
 
 # 🔐 Загрузка токена
 load_dotenv("api.env") # Убедитесь, что api.env находится в том же каталоге или указан правильный путь
@@ -20,6 +21,11 @@ DB_URL = os.getenv(
 )
 
 tax_percent = 12 # Процент налога, можно сделать его динамическим, если потребуется
+
+# Значение процента брака, используемое для новых записей в sales
+peremennaya_real_defect_percent = 2
+# Процент выкупа заказанных товаров
+vikup_percent = 91
 
 # 🕛 Даты для выборки
 glebas = 1 # Количество дней назад для yesterday
@@ -325,6 +331,10 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                        REAL,
                        "gift"
                        REAL,
+                       "real_defect_percent"
+                       REAL,
+                       "ad_manager_name"
+                       TEXT,
                        "defect_percent"
                        REAL,
                        "cost_price"
@@ -353,26 +363,63 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                    """)
     conn.commit()
 
-    # 📦 Получение справочной информации из таблицы cards
-    # Теперь мы НЕ получаем wb_commission_rub, tax_rub, cost_price, profit_per_item, commission_percent из cards,
-    # так как они будут пересчитаны.
+    # Ensure new columns exist and have default values
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "svikup_percent" REAL')
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "ad_manager_name" TEXT')
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
+    conn.commit()
+    cursor.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
+    # Обновляем svikup_percent для всех существующих записей
+    cursor.execute('UPDATE sales SET "svikup_percent" = %s', (vikup_percent,))
+    cursor.execute("UPDATE sales SET \"ad_manager_name\" = '0' WHERE \"ad_manager_name\" IS NULL")
+    cursor.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
+    conn.commit()
+
+    # 📦 Получение справочной информации из самой свежей записи таблицы sales
     cursor.execute(
-        "SELECT nm_id, brand, subject_name, purchase_price, delivery_to_warehouse, wb_logistics, packaging, fuel, gift, defect_percent FROM cards")
+        """
+        SELECT DISTINCT ON ("nm_ID") "nm_ID", "imtID", brand, "subjectName", purchase_price,
+               delivery_to_warehouse, wb_logistics, packaging, fuel, gift,
+               real_defect_percent, ad_manager_name, card_changes
+        FROM sales
+        ORDER BY "nm_ID", "date" DESC
+        """
+    )
     card_details_raw = cursor.fetchall()
     card_details = {
         row[0]: {
-            "brand": row[1] or "",
-            "subjectName": row[2] or "", # subjectName теперь нужен для комиссии
-            "purchase_price": row[3] or 0,
-            "delivery_to_warehouse": row[4] or 0,
-            "wb_logistics": row[5] or 0,
-            "packaging": row[6] or 0,
-            "fuel": row[7] or 0,
-            "gift": row[8] or 0,
-            "defect_percent": row[9] or 0,
+            "imtID": row[1],
+            "brand": row[2] or "",
+            "subjectName": row[3] or "",  # subjectName теперь нужен для комиссии
+            "purchase_price": row[4] or 0,
+            "delivery_to_warehouse": row[5] or 0,
+            "wb_logistics": row[6] or 0,
+            "packaging": row[7] or 0,
+            "fuel": row[8] or 0,
+            "gift": row[9] or 0,
+            "real_defect_percent": row[10] or peremennaya_real_defect_percent,
+            "ad_manager_name": row[11] or '0',
+            "card_changes": row[12] or '0',
             # 'cost_price', 'profit_per_item', 'wb_commission_rub', 'tax_rub', 'commission_percent'
             # теперь будут рассчитаны
         } for row in card_details_raw
+    }
+
+    cursor.execute(
+        """
+        SELECT DISTINCT ON ("imtID") "imtID", ad_manager_name, card_changes
+        FROM sales
+        ORDER BY "imtID", "date" DESC
+        """
+    )
+    imt_details_raw = cursor.fetchall()
+    imt_fallback = {
+        row[0]: {
+            "ad_manager_name": row[1] or '0',
+            "card_changes": row[2] or '0'
+        }
+        for row in imt_details_raw
     }
 
     for entry in sales_data:
@@ -442,27 +489,38 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
             packaging = card_details.get(nmID, {}).get("packaging", 0)
             fuel = card_details.get(nmID, {}).get("fuel", 0)
             gift = card_details.get(nmID, {}).get("gift", 0)
-            defect_percent = card_details.get(nmID, {}).get("defect_percent", 0)
+            real_defect_percent = card_details.get(nmID, {}).get(
+                "real_defect_percent", peremennaya_real_defect_percent
+            )
+            ad_manager_name = card_details.get(nmID, {}).get("ad_manager_name", '0')
+            if ad_manager_name in [None, '', '0']:
+                fallback = imt_fallback.get(imtID, {}).get("ad_manager_name")
+                if fallback not in [None, '', '0']:
+                    ad_manager_name = fallback
+            card_changes_val = card_details.get(nmID, {}).get("card_changes", '0')
+            if card_changes_val in [None, '', '0']:
+                cc_fallback = imt_fallback.get(imtID, {}).get("card_changes")
+                if cc_fallback not in [None, '', '0']:
+                    card_changes_val = cc_fallback
+            defect_percent = actual_price / 100 * real_defect_percent
 
             # Формула себестоимости с учетом новых рассчитанных значений
             calculated_cost_price = (
-                purchase_price +
-                delivery_to_warehouse +
-                calculated_wb_commission_rub + # Используем рассчитанную комиссию
-                wb_logistics +
-                calculated_tax_rub + # Используем рассчитанный налог
-                packaging +
-                fuel +
-                gift
+                purchase_price
+                + delivery_to_warehouse
+                + calculated_wb_commission_rub
+                + wb_logistics
+                + calculated_tax_rub
+                + packaging
+                + fuel
+                + gift
+                + defect_percent
             )
-            # Если defect_percent - это процент от закупочной цены, добавьте:
-            if defect_percent > 0:
-                 calculated_cost_price += (purchase_price * (defect_percent / 100))
 
 
             # === Пересчет profit_per_item и total_profit ===
             calculated_profit_per_item = actual_price - calculated_cost_price
-            calculated_total_profit = round((calculated_profit_per_item * quantity) - ad_spend, 2)
+            calculated_total_profit = round(((calculated_profit_per_item * quantity) - ad_spend) * (vikup_percent / 100), 2)
 
 
             # Формируем словарь для базы данных
@@ -490,7 +548,11 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "packaging": packaging,
                 "fuel": fuel,
                 "gift": gift,
+                "real_defect_percent": real_defect_percent,
+                "svikup_percent": vikup_percent,
                 "defect_percent": defect_percent,
+                "ad_manager_name": ad_manager_name,
+                "card_changes": card_changes_val,
             }
 
             merged["nm_ID"] = nmID # nm_ID уже есть в record, но явно добавляем для ясности
@@ -658,7 +720,7 @@ def ensure_columns_exist(conn, table_name, data_dict):
                 "ordersSumRub", "buyoutsSumRub", "buyoutPercent", "addToCartConversion",
                 "cartToOrderConversion", "salePrice", "purchase_price", "delivery_to_warehouse",
                 "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift",
-                "defect_percent", "cost_price", "profit_per_item", "commission_percent"
+                "defect_percent", "real_defect_percent", "svikup_percent", "cost_price", "profit_per_item", "commission_percent"
             ]:
                 column_type = "REAL"
             elif key in [
@@ -801,3 +863,4 @@ if __name__ == "__main__":
     asyncio.run(main())
     calculate_total_profit_for_day()
     calculate_profit_by_bundles()
+
