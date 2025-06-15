@@ -57,6 +57,24 @@ def ensure_ad_manager_column():
             conn.close()
 
 
+def ensure_svikup_percent_column():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "svikup_percent" REAL')
+        conn.commit()
+        cur.execute('UPDATE sales SET "svikup_percent" = 91')
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 def ensure_card_changes_column():
     conn = None
     cur = None
@@ -103,6 +121,7 @@ def ensure_card_change_options_table():
 ensure_real_defect_column()
 ensure_ad_manager_column()
 ensure_card_changes_column()
+ensure_svikup_percent_column()
 ensure_card_change_options_table()
 
 # --- Telegram Bot API Настройки ---

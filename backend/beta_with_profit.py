@@ -370,7 +370,8 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
     conn.commit()
     cursor.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
-    cursor.execute('UPDATE sales SET "svikup_percent" = %s WHERE "svikup_percent" IS NULL', (vikup_percent,))
+    # Обновляем svikup_percent для всех существующих записей
+    cursor.execute('UPDATE sales SET "svikup_percent" = %s', (vikup_percent,))
     cursor.execute("UPDATE sales SET \"ad_manager_name\" = '0' WHERE \"ad_manager_name\" IS NULL")
     cursor.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
     conn.commit()
