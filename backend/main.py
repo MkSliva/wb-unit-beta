@@ -253,7 +253,7 @@ def get_sales_grouped_detailed_range(
                        "packaging", \
                        "fuel", \
                        "gift", \
-                       "defect_percent", ad_manager_name, date
+                       "defect_percent", "svikup_percent", ad_manager_name, date
                 FROM sales
                 WHERE date BETWEEN %s \
                   AND %s \
@@ -283,7 +283,7 @@ def get_sales_grouped_detailed_range(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
 
@@ -381,8 +381,8 @@ def get_sales_filtered_range(
     )
     df["orderscount"] = df["orderscount"].astype(int)
     df["profit"] = (
-        df["actual_discounted_price"] - df["cost_price"]
-    ) * df["orderscount"] - df["ad_spend"]
+        (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+    ) * df.get("svikup_percent", 100) / 100
     df["investment"] = (
         df["purchase_price"]
         + df["delivery_to_warehouse"]
@@ -428,7 +428,7 @@ def get_sales_by_imt(
         conn = psycopg2.connect(DB_URL)
 
         query = """
-                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode"
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode", "svikup_percent"
                 FROM sales
                 WHERE "imtID" = %s \
                   AND date BETWEEN %s \
@@ -459,7 +459,7 @@ def get_sales_by_imt(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         grouped = df.groupby("vendorcode").agg({
             "orderscount": "sum",
@@ -503,7 +503,7 @@ def get_sales_by_imt_daily(
         conn = psycopg2.connect(DB_URL)
 
         query = """
-                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode"
+                SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price", "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price", "vendorCode", "svikup_percent"
                 FROM sales
                 WHERE "imtID" = %s \
                   AND date BETWEEN %s \
@@ -534,7 +534,7 @@ def get_sales_by_imt_daily(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         grouped = df.groupby("date").agg({
             "orderscount": "sum",
@@ -570,7 +570,7 @@ def get_sales_overall_daily(
                 SELECT date, "ordersCount", "ad_spend", "salePrice", "purchase_price",
                        "delivery_to_warehouse", "wb_commission_rub", "wb_logistics", "tax_rub",
                        "packaging", "fuel", "gift", "defect_percent", "actual_discounted_price",
-                       "vendorCode"
+                       "vendorCode", "svikup_percent"
                 FROM sales
                 WHERE date BETWEEN %s
                   AND %s
@@ -597,7 +597,7 @@ def get_sales_overall_daily(
                 df["fuel"] + df["gift"] + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
 
         grouped = df.groupby("date").agg({
             "orderscount": "sum",
@@ -1174,12 +1174,12 @@ def update_costs(update: CostUpdate):
                                      COALESCE("wb_commission_rub", 0) + COALESCE("wb_logistics", 0) +
                                      COALESCE("tax_rub", 0) + COALESCE("packaging", 0) +
                                      COALESCE("fuel", 0) + COALESCE("gift", 0) + COALESCE("defect_percent", 0),
-                    "total_profit" = (COALESCE("actual_discounted_price", 0) - (
+                    "total_profit" = ((COALESCE("actual_discounted_price", 0) - (
                         COALESCE("purchase_price", 0) + COALESCE("delivery_to_warehouse", 0) +
                         COALESCE("wb_commission_rub", 0) + COALESCE("wb_logistics", 0) +
                         COALESCE("tax_rub", 0) + COALESCE("packaging", 0) +
                         COALESCE("fuel", 0) + COALESCE("gift", 0) + COALESCE("defect_percent", 0)
-                        )) * COALESCE("ordersCount", 0) - COALESCE("ad_spend", 0)
+                        )) * COALESCE("ordersCount", 0) - COALESCE("ad_spend", 0)) * COALESCE("svikup_percent", 100) / 100
                 WHERE "vendorCode" = %s
                   AND date >= %s"""
             )
@@ -1304,7 +1304,7 @@ def get_problem_cards(
             + df["defect_percent"]
         )
         df["orderscount"] = df["orderscount"].astype(int)
-        df["profit"] = (df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]
+        df["profit"] = ((df["actual_discounted_price"] - df["cost_price"]) * df["orderscount"] - df["ad_spend"]) * df.get("svikup_percent", 100) / 100
         df["revenue"] = df["actual_discounted_price"] * df["orderscount"]
         df["investment_total"] = (
             df["purchase_price"] + df["delivery_to_warehouse"] + df["packaging"] + df["fuel"] + df["gift"]

@@ -24,6 +24,8 @@ tax_percent = 12 # Процент налога, можно сделать его
 
 # Значение процента брака, используемое для новых записей в sales
 peremennaya_real_defect_percent = 2
+# Процент выкупа заказанных товаров
+vikup_percent = 91
 
 # 🕛 Даты для выборки
 glebas = 1 # Количество дней назад для yesterday
@@ -363,10 +365,12 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
 
     # Ensure new columns exist and have default values
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "real_defect_percent" REAL')
+    cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "svikup_percent" REAL')
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "ad_manager_name" TEXT')
     cursor.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS "card_changes" TEXT')
     conn.commit()
     cursor.execute('UPDATE sales SET "real_defect_percent" = 2 WHERE "real_defect_percent" IS NULL')
+    cursor.execute('UPDATE sales SET "svikup_percent" = %s WHERE "svikup_percent" IS NULL', (vikup_percent,))
     cursor.execute("UPDATE sales SET \"ad_manager_name\" = '0' WHERE \"ad_manager_name\" IS NULL")
     cursor.execute("UPDATE sales SET \"card_changes\" = '0' WHERE \"card_changes\" IS NULL")
     conn.commit()
@@ -515,7 +519,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
 
             # === Пересчет profit_per_item и total_profit ===
             calculated_profit_per_item = actual_price - calculated_cost_price
-            calculated_total_profit = round((calculated_profit_per_item * quantity) - ad_spend, 2)
+            calculated_total_profit = round(((calculated_profit_per_item * quantity) - ad_spend) * (vikup_percent / 100), 2)
 
 
             # Формируем словарь для базы данных
@@ -544,6 +548,7 @@ def save_sales_to_db(sales_data: list, cards_info: dict, ad_data: dict, actual_p
                 "fuel": fuel,
                 "gift": gift,
                 "real_defect_percent": real_defect_percent,
+                "svikup_percent": vikup_percent,
                 "defect_percent": defect_percent,
                 "ad_manager_name": ad_manager_name,
                 "card_changes": card_changes_val,
@@ -714,7 +719,7 @@ def ensure_columns_exist(conn, table_name, data_dict):
                 "ordersSumRub", "buyoutsSumRub", "buyoutPercent", "addToCartConversion",
                 "cartToOrderConversion", "salePrice", "purchase_price", "delivery_to_warehouse",
                 "wb_commission_rub", "wb_logistics", "tax_rub", "packaging", "fuel", "gift",
-                "defect_percent", "real_defect_percent", "cost_price", "profit_per_item", "commission_percent"
+                "defect_percent", "real_defect_percent", "svikup_percent", "cost_price", "profit_per_item", "commission_percent"
             ]:
                 column_type = "REAL"
             elif key in [
